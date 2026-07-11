@@ -10,6 +10,18 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: events
+    description: Movie and theater events aggregated from partner listings
+  - name: venues
+    description: Cinemas and theaters
+  - name: sessions
+    description: Showtimes/sessions for events
+  - name: checkout
+    description: Ticket checkout
+  - name: orders
+    description: Order lookup
+  - name: home
+    description: Home page summaries
 paths:
   /healthz:
     get:
@@ -24,6 +36,176 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /cities:
+    get:
+      operationId: listCities
+      tags: [venues]
+      summary: List distinct cities that have venues
+      responses:
+        "200":
+          description: List of cities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /venues:
+    get:
+      operationId: listVenues
+      tags: [venues]
+      summary: List venues
+      parameters:
+        - name: city
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of venues
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Venue"
+
+  /events:
+    get:
+      operationId: listEvents
+      tags: [events]
+      summary: List events with optional filters
+      parameters:
+        - name: type
+          in: query
+          required: false
+          description: Filter by event type
+          schema:
+            $ref: "#/components/schemas/EventType"
+        - name: city
+          in: query
+          required: false
+          description: Filter to events that have sessions in this city
+          schema:
+            type: string
+        - name: search
+          in: query
+          required: false
+          description: Search by title
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EventSummary"
+
+  /events/{id}:
+    get:
+      operationId: getEvent
+      tags: [events]
+      summary: Get event detail with sessions and ticket categories
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Event detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventDetail"
+        "404":
+          description: Event not found
+
+  /sessions/{id}:
+    get:
+      operationId: getSession
+      tags: [sessions]
+      summary: Get a single session with its ticket categories
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Session detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionDetail"
+        "404":
+          description: Session not found
+
+  /checkout:
+    post:
+      operationId: createCheckout
+      tags: [checkout]
+      summary: Create a Stripe Checkout session to purchase tickets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutInput"
+      responses:
+        "200":
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResult"
+        "400":
+          description: Invalid input or not enough seats available
+        "404":
+          description: Session or ticket category not found
+
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      tags: [orders]
+      summary: Get order status and details (for the confirmation page)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Order detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderDetail"
+        "404":
+          description: Order not found
+
+  /home/highlights:
+    get:
+      operationId: getHomeHighlights
+      tags: [home]
+      summary: Featured events and quick stats for the home page
+      responses:
+        "200":
+          description: Home highlights
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeHighlights"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +216,237 @@ components:
       required:
         - status
 
+    EventType:
+      type: string
+      enum: [movie, theater]
+
+    Venue:
+      type: object
+      required: [id, name, city, address]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        city:
+          type: string
+        address:
+          type: string
+
+    TicketCategory:
+      type: object
+      required: [id, sessionId, name, priceCents, seatsTotal, seatsAvailable]
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: integer
+        name:
+          type: string
+        priceCents:
+          type: integer
+        seatsTotal:
+          type: integer
+        seatsAvailable:
+          type: integer
+
+    SessionSummary:
+      type: object
+      required: [id, eventId, startsAt, hall, venue, minPriceCents]
+      properties:
+        id:
+          type: integer
+        eventId:
+          type: integer
+        startsAt:
+          type: string
+          format: date-time
+        hall:
+          type: ["string", "null"]
+        venue:
+          $ref: "#/components/schemas/Venue"
+        minPriceCents:
+          type: ["integer", "null"]
+
+    SessionDetail:
+      type: object
+      required: [id, eventId, startsAt, hall, venue, ticketCategories, event]
+      properties:
+        id:
+          type: integer
+        eventId:
+          type: integer
+        startsAt:
+          type: string
+          format: date-time
+        hall:
+          type: ["string", "null"]
+        venue:
+          $ref: "#/components/schemas/Venue"
+        ticketCategories:
+          type: array
+          items:
+            $ref: "#/components/schemas/TicketCategory"
+        event:
+          $ref: "#/components/schemas/EventSummary"
+
+    EventSummary:
+      type: object
+      required:
+        [
+          id,
+          title,
+          type,
+          posterUrl,
+          genre,
+          durationMinutes,
+          ageRating,
+          rating,
+          sourceName,
+          minPriceCents,
+        ]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        type:
+          $ref: "#/components/schemas/EventType"
+        posterUrl:
+          type: ["string", "null"]
+        genre:
+          type: ["string", "null"]
+        durationMinutes:
+          type: ["integer", "null"]
+        ageRating:
+          type: ["string", "null"]
+        rating:
+          type: ["number", "null"]
+        sourceName:
+          type: string
+        minPriceCents:
+          type: ["integer", "null"]
+
+    EventDetail:
+      type: object
+      required:
+        [
+          id,
+          title,
+          type,
+          description,
+          posterUrl,
+          genre,
+          durationMinutes,
+          ageRating,
+          rating,
+          sourceName,
+          sessions,
+        ]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        type:
+          $ref: "#/components/schemas/EventType"
+        description:
+          type: ["string", "null"]
+        posterUrl:
+          type: ["string", "null"]
+        genre:
+          type: ["string", "null"]
+        durationMinutes:
+          type: ["integer", "null"]
+        ageRating:
+          type: ["string", "null"]
+        rating:
+          type: ["number", "null"]
+        sourceName:
+          type: string
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionSummary"
+
+    CheckoutInput:
+      type: object
+      required: [sessionId, ticketCategoryId, quantity, customerName, customerEmail]
+      properties:
+        sessionId:
+          type: integer
+        ticketCategoryId:
+          type: integer
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 10
+        customerName:
+          type: string
+          minLength: 1
+        customerEmail:
+          type: string
+          minLength: 3
+
+    CheckoutResult:
+      type: object
+      required: [url, orderId]
+      properties:
+        url:
+          type: string
+        orderId:
+          type: integer
+
+    OrderDetail:
+      type: object
+      required:
+        [
+          id,
+          status,
+          quantity,
+          totalAmountCents,
+          customerName,
+          customerEmail,
+          createdAt,
+          event,
+          session,
+          ticketCategory,
+        ]
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [pending, paid, cancelled]
+        quantity:
+          type: integer
+        totalAmountCents:
+          type: integer
+        customerName:
+          type: string
+        customerEmail:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        event:
+          $ref: "#/components/schemas/EventSummary"
+        session:
+          $ref: "#/components/schemas/SessionSummary"
+        ticketCategory:
+          $ref: "#/components/schemas/TicketCategory"
+
+    HomeHighlights:
+      type: object
+      required: [featuredEvents, totalUpcomingSessions, citiesCount, eventsCount]
+      properties:
+        featuredEvents:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventSummary"
+        totalUpcomingSessions:
+          type: integer
+        citiesCount:
+          type: integer
+        eventsCount:
+          type: integer
