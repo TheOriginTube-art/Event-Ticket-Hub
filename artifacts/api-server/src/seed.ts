@@ -320,11 +320,222 @@ const eventDefs: EventDef[] = [
   },
 ];
 
+/**
+ * Additional real-world events sourced from other afisha sites (Afisha.ru,
+ * Kinopoisk Afisha, Kassir.ru, MXAT.ru, Maly.ru) to broaden the catalog
+ * beyond the original seed. Inserted lazily by `seedAdditionalEventsIfMissing`
+ * (skips any title that already exists), so it's safe to run on a
+ * database that was already seeded.
+ */
+const additionalEventDefs: EventDef[] = [
+  {
+    title: "Холоп 3",
+    type: "movie",
+    description:
+      "Финал народной трилогии: избалованный богатый наследник вновь оказывается на грани перевоспитания — на этот раз приключения забрасывают героев в эпоху Петра I.",
+    posterUrl: "https://static.kinoafisha.info/k/movie_posters/110/upload/movie_posters/1/1/1/8375111/147604663767.jpg",
+    genre: "Комедия",
+    durationMinutes: 116,
+    ageRating: "12+",
+    rating: 6.6,
+    sourceName: "Афиша.ру",
+    priceTiers: MOVIE_TIERS,
+    sessions: [
+      { venueName: "Каро 11 Октябрь", hall: "Зал 2", daysFromNow: 1, hour: 16, minute: 20 },
+      { venueName: "Пионер", hall: "Зал 1", daysFromNow: 3, hour: 20, minute: 30 },
+    ],
+  },
+  {
+    title: "Колония",
+    type: "movie",
+    description:
+      "На конференции по биотехнологиям происходит внезапный выброс неизвестного вируса, здание закрывают на карантин — и запертым внутри людям предстоит бороться за выживание.",
+    posterUrl: "https://www.kinonews.ru/insimgs/2026/poster/poster141264_3.webp",
+    genre: "Боевик",
+    durationMinutes: 122,
+    ageRating: "18+",
+    rating: 7.4,
+    sourceName: "Kino Mail",
+    priceTiers: MOVIE_TIERS,
+    sessions: [
+      { venueName: "Синема Парк Кольцо", hall: "Зал 3", daysFromNow: 2, hour: 19, minute: 40 },
+      { venueName: "Киномакс Родина", hall: "Зал 3", daysFromNow: 6, hour: 21, minute: 15 },
+    ],
+  },
+  {
+    title: "Кодекс Данте",
+    type: "movie",
+    description:
+      "Эзотерический детектив-кейпер по роману Ника Тошеса: букинист случайно завладевает рукописью Данте и оказывается втянут в опасную охоту с участием мафии и Ватикана.",
+    posterUrl: "https://static.kinoafisha.info/k/movie_posters/110/upload/movie_posters/4/3/7/8372734/800461579969.jpg",
+    genre: "Драма",
+    durationMinutes: 115,
+    ageRating: "16+",
+    rating: 6.9,
+    sourceName: "Кинопоиск Афиша",
+    priceTiers: MOVIE_TIERS,
+    sessions: [
+      { venueName: "Формула Кино Заневский", hall: "Зал 2", daysFromNow: 3, hour: 20, minute: 0 },
+      { venueName: "Синема Парк Мега", hall: "Зал 2", daysFromNow: 8, hour: 18, minute: 30 },
+    ],
+  },
+  {
+    title: "Кабала святош",
+    type: "theater",
+    description:
+      "Булгаковская пьеса о Мольере и всесильной кабале, решающей судьбы художников при дворе Короля-солнца — новая постановка МХТ с Константином Хабенским.",
+    posterUrl: "https://s3.afisha.ru/mediastorage/d4/41/9e12596fb9034eb8b525b39741d4.jpg",
+    genre: "Драма",
+    durationMinutes: 170,
+    ageRating: "16+",
+    rating: 8.8,
+    sourceName: "MXAT.ru",
+    priceTiers: THEATER_TIERS,
+    sessions: [
+      { venueName: "МХТ имени Чехова", hall: "Основная сцена", daysFromNow: 7, hour: 19, minute: 0 },
+      { venueName: "МХТ имени Чехова", hall: "Основная сцена", daysFromNow: 14, hour: 19, minute: 0 },
+    ],
+  },
+  {
+    title: "Две Анны",
+    type: "theater",
+    description:
+      "Балетный проект MuzArts — история в танце о двух великих женщинах XX столетия, представленная ведущими солистами российского балета.",
+    posterUrl: "https://live.mts.ru/image/536x360/dve-anny-4c8393ba-1f53-459f-b54b-5f6b6df41a20.jpg",
+    genre: "Балет",
+    durationMinutes: 110,
+    ageRating: "12+",
+    rating: 9.0,
+    sourceName: "Maly.ru",
+    priceTiers: THEATER_TIERS,
+    sessions: [
+      { venueName: "БДТ имени Товстоногова", hall: "Основная сцена", daysFromNow: 9, hour: 19, minute: 0 },
+    ],
+  },
+  {
+    title: "Актриса",
+    type: "theater",
+    description:
+      "Трагикомедия современного театра антрепризы о звезде сцены, которой предстоит заново найти себя за кулисами собственной славы.",
+    posterUrl:
+      "https://s13.stc.all.kpcdn.net/afisha/msk/wp-content/uploads/sites/5/2025/01/img_20260126_1123051-600x600.jpg",
+    genre: "Трагикомедия",
+    durationMinutes: 90,
+    ageRating: "16+",
+    rating: 9.0,
+    sourceName: "Яндекс Афиша",
+    priceTiers: THEATER_TIERS,
+    sessions: [
+      { venueName: "Свердловский театр драмы", hall: "Малая сцена", daysFromNow: 5, hour: 19, minute: 0 },
+      { venueName: "Казанский ТЮЗ", hall: "Основная сцена", daysFromNow: 12, hour: 19, minute: 30 },
+    ],
+  },
+];
+
 function sessionDate(daysFromNow: number, hour: number, minute: number): Date {
   const d = new Date();
   d.setDate(d.getDate() + daysFromNow);
   d.setHours(hour, minute, 0, 0);
   return d;
+}
+
+/** Inserts one event (with Stripe product/prices, sessions, ticket categories and seats) into the DB. */
+async function insertEvent(
+  evt: EventDef,
+  stripe: Awaited<ReturnType<typeof getUncachableStripeClient>> | null,
+  venueIdByName: Map<string, number>,
+): Promise<void> {
+  const product = stripe
+    ? await stripe.products.create({
+        name: evt.title,
+        description: evt.description,
+      })
+    : null;
+
+  const [eventRow] = await db
+    .insert(eventsTable)
+    .values({
+      title: evt.title,
+      type: evt.type,
+      description: evt.description,
+      posterUrl: evt.posterUrl,
+      genre: evt.genre,
+      durationMinutes: evt.durationMinutes,
+      ageRating: evt.ageRating,
+      rating: evt.rating,
+      sourceName: evt.sourceName,
+      stripeProductId: product?.id,
+    })
+    .returning();
+
+  if (!eventRow) {
+    throw new Error(`Failed to insert event ${evt.title}`);
+  }
+
+  const priceIdByTier = new Map<string, string>();
+  if (stripe && product) {
+    for (const tier of evt.priceTiers) {
+      const price = await stripe.prices.create({
+        product: product.id,
+        unit_amount: tier.priceCents,
+        currency: "rub",
+        nickname: tier.name,
+      });
+      priceIdByTier.set(tier.name, price.id);
+    }
+  }
+
+  for (const sess of evt.sessions) {
+    const venueId = venueIdByName.get(sess.venueName);
+    if (!venueId) {
+      throw new Error(`Unknown venue ${sess.venueName}`);
+    }
+
+    const [sessionRow] = await db
+      .insert(sessionsTable)
+      .values({
+        eventId: eventRow.id,
+        venueId,
+        hall: sess.hall,
+        startsAt: sessionDate(sess.daysFromNow, sess.hour, sess.minute),
+      })
+      .returning();
+
+    if (!sessionRow) {
+      throw new Error(`Failed to insert session for ${evt.title}`);
+    }
+
+    let rowIndex = 0;
+    for (const tier of evt.priceTiers) {
+      const [categoryRow] = await db
+        .insert(ticketCategoriesTable)
+        .values({
+          sessionId: sessionRow.id,
+          name: tier.name,
+          priceCents: tier.priceCents,
+          seatsTotal: tier.seatsTotal,
+          stripePriceId: priceIdByTier.get(tier.name),
+        })
+        .returning();
+
+      if (!categoryRow) {
+        throw new Error(`Failed to insert ticket category ${tier.name} for ${evt.title}`);
+      }
+
+      const { seats, nextRowIndex } = buildSeatsForCategory(
+        sessionRow.id,
+        categoryRow.id,
+        tier.seatsTotal,
+        rowIndex,
+      );
+      rowIndex = nextRowIndex;
+      if (seats.length > 0) {
+        await db.insert(seatsTable).values(seats);
+      }
+    }
+  }
+
+  logger.info(`Seeded "${evt.title}" with ${evt.sessions.length} session(s).`);
 }
 
 /**
@@ -359,98 +570,38 @@ export async function seedIfEmpty(): Promise<void> {
   }
 
   for (const evt of eventDefs) {
-    const product = stripe
-      ? await stripe.products.create({
-          name: evt.title,
-          description: evt.description,
-        })
-      : null;
-
-    const [eventRow] = await db
-      .insert(eventsTable)
-      .values({
-        title: evt.title,
-        type: evt.type,
-        description: evt.description,
-        posterUrl: evt.posterUrl,
-        genre: evt.genre,
-        durationMinutes: evt.durationMinutes,
-        ageRating: evt.ageRating,
-        rating: evt.rating,
-        sourceName: evt.sourceName,
-        stripeProductId: product?.id,
-      })
-      .returning();
-
-    if (!eventRow) {
-      throw new Error(`Failed to insert event ${evt.title}`);
-    }
-
-    const priceIdByTier = new Map<string, string>();
-    if (stripe && product) {
-      for (const tier of evt.priceTiers) {
-        const price = await stripe.prices.create({
-          product: product.id,
-          unit_amount: tier.priceCents,
-          currency: "rub",
-          nickname: tier.name,
-        });
-        priceIdByTier.set(tier.name, price.id);
-      }
-    }
-
-    for (const sess of evt.sessions) {
-      const venueId = venueIdByName.get(sess.venueName);
-      if (!venueId) {
-        throw new Error(`Unknown venue ${sess.venueName}`);
-      }
-
-      const [sessionRow] = await db
-        .insert(sessionsTable)
-        .values({
-          eventId: eventRow.id,
-          venueId,
-          hall: sess.hall,
-          startsAt: sessionDate(sess.daysFromNow, sess.hour, sess.minute),
-        })
-        .returning();
-
-      if (!sessionRow) {
-        throw new Error(`Failed to insert session for ${evt.title}`);
-      }
-
-      let rowIndex = 0;
-      for (const tier of evt.priceTiers) {
-        const [categoryRow] = await db
-          .insert(ticketCategoriesTable)
-          .values({
-            sessionId: sessionRow.id,
-            name: tier.name,
-            priceCents: tier.priceCents,
-            seatsTotal: tier.seatsTotal,
-            stripePriceId: priceIdByTier.get(tier.name),
-          })
-          .returning();
-
-        if (!categoryRow) {
-          throw new Error(`Failed to insert ticket category ${tier.name} for ${evt.title}`);
-        }
-
-        const { seats, nextRowIndex } = buildSeatsForCategory(
-          sessionRow.id,
-          categoryRow.id,
-          tier.seatsTotal,
-          rowIndex,
-        );
-        rowIndex = nextRowIndex;
-        if (seats.length > 0) {
-          await db.insert(seatsTable).values(seats);
-        }
-      }
-    }
-
-    logger.info(`Seeded "${evt.title}" with ${evt.sessions.length} session(s).`);
+    await insertEvent(evt, stripe, venueIdByName);
   }
 
   logger.info("Demo data seed complete.");
+}
+
+/**
+ * Adds the extra afisha-sourced events (see `additionalEventDefs`) to an
+ * already-seeded database, skipping any title that already exists. Safe to
+ * call every boot.
+ */
+export async function seedAdditionalEventsIfMissing(): Promise<void> {
+  const existingTitles = new Set((await db.select({ title: eventsTable.title }).from(eventsTable)).map((e) => e.title));
+  const toInsert = additionalEventDefs.filter((evt) => !existingTitles.has(evt.title));
+  if (toInsert.length === 0) {
+    logger.info("Additional afisha events already seeded, skipping.");
+    return;
+  }
+
+  let stripe: Awaited<ReturnType<typeof getUncachableStripeClient>> | null = null;
+  try {
+    stripe = await getUncachableStripeClient();
+  } catch (err) {
+    logger.warn({ err }, "Stripe is not connected -- seeding additional events without Stripe products/prices.");
+  }
+
+  const venues = await db.select().from(venuesTable);
+  const venueIdByName = new Map(venues.map((v) => [v.name, v.id]));
+
+  logger.info(`Seeding ${toInsert.length} additional event(s) from other afisha sites...`);
+  for (const evt of toInsert) {
+    await insertEvent(evt, stripe, venueIdByName);
+  }
+  logger.info("Additional afisha events seed complete.");
 }
