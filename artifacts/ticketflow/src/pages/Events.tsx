@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useListEvents } from "@workspace/api-client-react";
+import type { EventSortOrder } from "@workspace/api-zod";
 import { Link, useLocation } from "wouter";
 import { Search, Film, Theater, Star, MapPin, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,14 @@ import { formatRubles } from "@/lib/utils";
 import { useCity } from "@/lib/city-context";
 import { RUSSIAN_CITIES } from "@/lib/russian-cities";
 
+const SORT_OPTIONS: { value: EventSortOrder | ""; label: string }[] = [
+  { value: "", label: "По умолчанию" },
+  { value: "dateAsc", label: "Сначала ближайшие" },
+  { value: "priceAsc", label: "Сначала дешевле" },
+  { value: "priceDesc", label: "Сначала дороже" },
+  { value: "ratingDesc", label: "По рейтингу" },
+];
+
 export default function Events() {
   const [location, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
@@ -19,6 +28,7 @@ export default function Events() {
   const [type, setType] = useState<"movie" | "theater" | undefined>(typeParam);
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [debouncedSearch, setDebouncedSearch] = useState(search);
+  const [sort, setSort] = useState<EventSortOrder | "">((searchParams.get("sort") as EventSortOrder) || "");
 
   // The city filter on this page and the header's global city selector share
   // the same state, so picking a city in either place stays in sync.
@@ -43,6 +53,7 @@ export default function Events() {
     type,
     city: city || undefined,
     search: debouncedSearch || undefined,
+    sort: sort || undefined,
   });
 
   const handleTypeChange = (newType: "movie" | "theater" | undefined) => {
@@ -106,6 +117,22 @@ export default function Events() {
             </div>
             
             <div className="space-y-3">
+              <label className="text-sm font-medium text-muted-foreground">Сортировка</label>
+              <select
+                className="flex h-11 w-full rounded-lg border border-white/10 bg-background/50 px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary appearance-none"
+                style={{ colorScheme: "dark" }}
+                value={sort}
+                onChange={(e) => setSort(e.target.value as EventSortOrder | "")}
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value} className="bg-[#101014] text-white">
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-3">
               <label className="text-sm font-medium text-muted-foreground">Город</label>
               <select 
                 className="flex h-11 w-full rounded-lg border border-white/10 bg-background/50 px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary appearance-none"
@@ -120,13 +147,14 @@ export default function Events() {
               </select>
             </div>
             
-            {(search || city) && (
+            {(search || city || sort) && (
               <Button 
                 variant="outline" 
                 className="w-full border-white/10" 
                 onClick={() => {
                   setSearch("");
                   setCity("");
+                  setSort("");
                 }}
               >
                 Сбросить фильтры
@@ -203,7 +231,7 @@ export default function Events() {
               <p className="text-muted-foreground mb-6 max-w-md">
                 По вашему запросу нет мероприятий. Попробуйте изменить фильтры или поискать что-то другое.
               </p>
-              <Button onClick={() => { setSearch(""); setCity(""); setType(undefined); }}>
+              <Button onClick={() => { setSearch(""); setCity(""); setType(undefined); setSort(""); }}>
                 Сбросить фильтры
               </Button>
             </div>

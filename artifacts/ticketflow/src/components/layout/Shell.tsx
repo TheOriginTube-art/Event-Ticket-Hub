@@ -1,9 +1,10 @@
 import { Link, useLocation } from "wouter";
-import { Ticket, Search, MapPin, ChevronDown } from "lucide-react";
+import { Ticket, Search, MapPin, ChevronDown, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useHealthCheck } from "@workspace/api-client-react";
 import { useCity } from "@/lib/city-context";
 import { RUSSIAN_CITIES } from "@/lib/russian-cities";
+import { useAuth } from "@/lib/auth-context";
 
 function CitySelector() {
   const { city, setCity } = useCity();
@@ -35,6 +36,7 @@ function CitySelector() {
 export function Shell({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { data: health } = useHealthCheck();
+  const { user, isLoading: isAuthLoading } = useAuth();
 
   return (
     <div className="min-h-[100dvh] flex flex-col">
@@ -68,9 +70,20 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 <Search className="w-5 h-5" />
               </Button>
             </Link>
-            <Button variant="outline" className="hidden sm:flex rounded-full px-6 border-white/10 hover:border-primary/50 hover:bg-primary/10">
-              Войти
-            </Button>
+            {isAuthLoading ? null : user ? (
+              <Link href="/account">
+                <Button variant="outline" className="hidden sm:flex rounded-full px-5 gap-2 border-white/10 hover:border-primary/50 hover:bg-primary/10">
+                  <User className="w-4 h-4" />
+                  {user.name.split(" ")[0]}
+                </Button>
+              </Link>
+            ) : (
+              <Link href="/login">
+                <Button variant="outline" className="hidden sm:flex rounded-full px-6 border-white/10 hover:border-primary/50 hover:bg-primary/10">
+                  Войти
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </header>

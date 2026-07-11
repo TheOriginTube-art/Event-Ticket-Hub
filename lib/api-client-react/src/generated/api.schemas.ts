@@ -17,6 +17,16 @@ export const EventType = {
   theater: 'theater',
 } as const;
 
+export type EventSortOrder = typeof EventSortOrder[keyof typeof EventSortOrder];
+
+
+export const EventSortOrder = {
+  dateAsc: 'dateAsc',
+  priceAsc: 'priceAsc',
+  priceDesc: 'priceDesc',
+  ratingDesc: 'ratingDesc',
+} as const;
+
 export interface Venue {
   id: number;
   name: string;
@@ -31,6 +41,25 @@ export interface TicketCategory {
   priceCents: number;
   seatsTotal: number;
   seatsAvailable: number;
+}
+
+export type SeatStatus = typeof SeatStatus[keyof typeof SeatStatus];
+
+
+export const SeatStatus = {
+  available: 'available',
+  sold: 'sold',
+} as const;
+
+export interface Seat {
+  id: number;
+  sessionId: number;
+  ticketCategoryId: number;
+  rowLabel: string;
+  seatNumber: number;
+  status: SeatStatus;
+  priceCents: number;
+  categoryName: string;
 }
 
 export interface SessionSummary {
@@ -96,12 +125,11 @@ export interface EventDetail {
 
 export interface CheckoutInput {
   sessionId: number;
-  ticketCategoryId: number;
   /**
-     * @minimum 1
-     * @maximum 10
+     * @minItems 1
+     * @maxItems 10
      */
-  quantity: number;
+  seatIds: number[];
   /** @minLength 1 */
   customerName: string;
   /** @minLength 3 */
@@ -111,6 +139,14 @@ export interface CheckoutInput {
 export interface CheckoutResult {
   url: string;
   orderId: number;
+}
+
+export interface OrderSeat {
+  id: number;
+  rowLabel: string;
+  seatNumber: number;
+  categoryName: string;
+  priceCents: number;
 }
 
 export type OrderDetailStatus = typeof OrderDetailStatus[keyof typeof OrderDetailStatus];
@@ -125,14 +161,35 @@ export const OrderDetailStatus = {
 export interface OrderDetail {
   id: number;
   status: OrderDetailStatus;
-  quantity: number;
   totalAmountCents: number;
   customerName: string;
   customerEmail: string;
   createdAt: string;
   event: EventSummary;
   session: SessionSummary;
-  ticketCategory: TicketCategory;
+  seats: OrderSeat[];
+}
+
+export interface RegisterInput {
+  /** @minLength 3 */
+  email: string;
+  /** @minLength 6 */
+  password: string;
+  /** @minLength 1 */
+  name: string;
+}
+
+export interface LoginInput {
+  /** @minLength 1 */
+  email: string;
+  /** @minLength 1 */
+  password: string;
+}
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  name: string;
 }
 
 export interface HomeHighlights {
@@ -159,6 +216,10 @@ city?: string;
  * Search by title
  */
 search?: string;
+/**
+ * Sort order
+ */
+sort?: EventSortOrder;
 };
 
 export type GetHomeHighlightsParams = {

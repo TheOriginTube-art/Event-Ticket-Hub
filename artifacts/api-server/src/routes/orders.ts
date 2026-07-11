@@ -1,24 +1,22 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, eventsTable, ordersTable, sessionsTable, ticketCategoriesTable, venuesTable } from "@workspace/db";
-import { GetOrderParams, GetOrderResponse } from "@workspace/api-zod";
+import { desc, eq, inArray } from "drizzle-orm";
+import {
+  db,
+  eventsTable,
+  orderSeatsTable,
+  ordersTable,
+  seatsTable,
+  sessionsTable,
+  ticketCategoriesTable,
+  venuesTable,
+} from "@workspace/db";
+import { GetOrderParams, GetOrderResponse, GetMyOrdersResponse } from "@workspace/api-zod";
 import { getEventMinPriceCents } from "../lib/eventQueries";
+import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
 
-router.get("/orders/:id", async (req, res): Promise<void> => {
-  const params = GetOrderParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
-  }
-
-  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id));
-  if (!order) {
-    res.status(404).json({ error: "Order not found" });
-    return;
-  }
-
+async function buildOrderDetail(order: typeof ordersTable.$inferSelect) {
   const [session] = await db
     .select({
       id: sessionsTable.id,
@@ -37,35 +35,69 @@ router.get("/orders/:id", async (req, res): Promise<void> => {
     .where(eq(sessionsTable.id, order.sessionId));
 
   const [eventRow] = await db.select().from(eventsTable).where(eq(eventsTable.id, session?.eventId ?? -1));
-  const [ticketCategory] = await db
-    .select()
-    .from(ticketCategoriesTable)
-    .where(eq(ticketCategoriesTable.id, order.ticketCategoryId));
+  if (!session || !eventRow) {
+    return null;
+  }
 
-  if (!session || !eventRow || !ticketCategory) {
+  const seatRows = await db
+    .select({
+      id: seatsTable.id,
+      rowLabel: seatsTable.rowLabel,
+      seatNumber: seatsTable.seatNumber,
+      categoryName: ticketCategoriesTable.name,
+      priceCents: orderSeatsTable.priceCents,
+    })
+    .from(orderSeatsTable)
+    .innerJoin(seatsTable, eq(seatsTable.id, orderSeatsTable.seatId))
+    .innerJoin(ticketCategoriesTable, eq(ticketCategoriesTable.id, seatsTable.ticketCategoryId))
+    .where(eq(orderSeatsTable.orderId, order.id));
+
+  const minPriceCents = await getEventMinPriceCents(eventRow.id);
+
+  return {
+    id: order.id,
+    status: order.status,
+    totalAmountCents: order.totalAmountCents,
+    customerName: order.customerName,
+    customerEmail: order.customerEmail,
+    createdAt: order.createdAt,
+    event: { ...eventRow, minPriceCents },
+    session: { ...session, minPriceCents },
+    seats: seatRows,
+  };
+}
+
+router.get("/orders/mine", requireAuth, async (req, res): Promise<void> => {
+  const rows = await db
+    .select()
+    .from(ordersTable)
+    .where(eq(ordersTable.userId, req.user!.id))
+    .orderBy(desc(ordersTable.createdAt));
+
+  const details = (await Promise.all(rows.map(buildOrderDetail))).filter((o) => o !== null);
+  res.json(GetMyOrdersResponse.parse(details));
+});
+
+router.get("/orders/:id", async (req, res): Promise<void> => {
+  const params = GetOrderParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id));
+  if (!order) {
+    res.status(404).json({ error: "Order not found" });
+    return;
+  }
+
+  const detail = await buildOrderDetail(order);
+  if (!detail) {
     res.status(404).json({ error: "Order details incomplete" });
     return;
   }
 
-  const [sessionMinPriceCents, eventMinPriceCents] = await Promise.all([
-    getEventMinPriceCents(eventRow.id),
-    getEventMinPriceCents(eventRow.id),
-  ]);
-
-  res.json(
-    GetOrderResponse.parse({
-      id: order.id,
-      status: order.status,
-      quantity: order.quantity,
-      totalAmountCents: order.totalAmountCents,
-      customerName: order.customerName,
-      customerEmail: order.customerEmail,
-      createdAt: order.createdAt,
-      event: { ...eventRow, minPriceCents: eventMinPriceCents },
-      session: { ...session, minPriceCents: sessionMinPriceCents },
-      ticketCategory,
-    }),
-  );
+  res.json(GetOrderResponse.parse(detail));
 });
 
 export default router;

@@ -1,7 +1,16 @@
 import { Router, type IRouter } from "express";
-import { and, asc, eq, ilike, type SQL, sql } from "drizzle-orm";
-import { db, eventsTable, sessionsTable, ticketCategoriesTable, venuesTable } from "@workspace/db";
-import { GetEventParams, GetEventResponse, GetSessionParams, GetSessionResponse, ListEventsQueryParams, ListEventsResponse } from "@workspace/api-zod";
+import { and, asc, desc, eq, ilike, type SQL, sql } from "drizzle-orm";
+import { db, eventsTable, seatsTable, sessionsTable, ticketCategoriesTable, venuesTable } from "@workspace/db";
+import {
+  GetEventParams,
+  GetEventResponse,
+  GetSessionParams,
+  GetSessionResponse,
+  GetSessionSeatsParams,
+  GetSessionSeatsResponse,
+  ListEventsQueryParams,
+  ListEventsResponse,
+} from "@workspace/api-zod";
 import { getEventMinPriceCents, getEventWithSessions } from "../lib/eventQueries";
 
 const router: IRouter = Router();
@@ -12,12 +21,24 @@ router.get("/events", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const { type, city, search } = params.data;
+  const { type, city, search, sort } = params.data;
 
   const conditions: SQL[] = [];
   if (type) conditions.push(eq(eventsTable.type, type));
   if (search) conditions.push(ilike(eventsTable.title, `%${search}%`));
   if (city) conditions.push(eq(venuesTable.city, city));
+
+  const minPriceCents = sql<number | null>`min(${ticketCategoriesTable.priceCents})`;
+  const orderBy =
+    sort === "priceAsc"
+      ? [asc(minPriceCents)]
+      : sort === "priceDesc"
+        ? [desc(minPriceCents)]
+        : sort === "ratingDesc"
+          ? [desc(eventsTable.rating)]
+          : sort === "dateAsc"
+            ? [asc(sql<Date | null>`min(${sessionsTable.startsAt})`)]
+            : [asc(eventsTable.id)];
 
   const rows = await db
     .select({
@@ -30,7 +51,7 @@ router.get("/events", async (req, res): Promise<void> => {
       ageRating: eventsTable.ageRating,
       rating: eventsTable.rating,
       sourceName: eventsTable.sourceName,
-      minPriceCents: sql<number | null>`min(${ticketCategoriesTable.priceCents})`,
+      minPriceCents,
     })
     .from(eventsTable)
     .leftJoin(sessionsTable, eq(sessionsTable.eventId, eventsTable.id))
@@ -38,7 +59,7 @@ router.get("/events", async (req, res): Promise<void> => {
     .leftJoin(ticketCategoriesTable, eq(ticketCategoriesTable.sessionId, sessionsTable.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .groupBy(eventsTable.id)
-    .orderBy(asc(eventsTable.id));
+    .orderBy(...orderBy);
 
   res.json(ListEventsResponse.parse(rows));
 });
@@ -107,6 +128,38 @@ router.get("/sessions/:id", async (req, res): Promise<void> => {
       event: { ...eventRow, minPriceCents },
     }),
   );
+});
+
+router.get("/sessions/:id/seats", async (req, res): Promise<void> => {
+  const params = GetSessionSeatsParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [session] = await db.select().from(sessionsTable).where(eq(sessionsTable.id, params.data.id));
+  if (!session) {
+    res.status(404).json({ error: "Session not found" });
+    return;
+  }
+
+  const rows = await db
+    .select({
+      id: seatsTable.id,
+      sessionId: seatsTable.sessionId,
+      ticketCategoryId: seatsTable.ticketCategoryId,
+      rowLabel: seatsTable.rowLabel,
+      seatNumber: seatsTable.seatNumber,
+      status: seatsTable.status,
+      priceCents: ticketCategoriesTable.priceCents,
+      categoryName: ticketCategoriesTable.name,
+    })
+    .from(seatsTable)
+    .innerJoin(ticketCategoriesTable, eq(ticketCategoriesTable.id, seatsTable.ticketCategoryId))
+    .where(eq(seatsTable.sessionId, params.data.id))
+    .orderBy(asc(seatsTable.rowLabel), asc(seatsTable.seatNumber));
+
+  res.json(GetSessionSeatsResponse.parse(rows));
 });
 
 export default router;

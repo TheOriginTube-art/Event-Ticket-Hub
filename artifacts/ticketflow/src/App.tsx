@@ -3,12 +3,16 @@ import { Toaster } from '@/components/ui/toaster';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 
 import { CityProvider } from '@/lib/city-context';
+import { AuthProvider } from '@/lib/auth-context';
 import { Shell } from '@/components/layout/Shell';
 import Home from '@/pages/Home';
 import Events from '@/pages/Events';
 import EventDetail from '@/pages/EventDetail';
 import CheckoutSuccess from '@/pages/CheckoutSuccess';
 import CheckoutCancel from '@/pages/CheckoutCancel';
+import Login from '@/pages/Login';
+import Register from '@/pages/Register';
+import Account from '@/pages/Account';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +32,9 @@ function Router() {
         <Route path="/events/:id" component={EventDetail} />
         <Route path="/checkout/success" component={CheckoutSuccess} />
         <Route path="/checkout/cancel" component={CheckoutCancel} />
+        <Route path="/login" component={Login} />
+        <Route path="/register" component={Register} />
+        <Route path="/account" component={Account} />
         <Route>
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center min-h-[50vh]">
             <h1 className="text-4xl font-bold mb-2">404</h1>
@@ -42,12 +49,14 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <CityProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </CityProvider>
+      <AuthProvider>
+        <CityProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+        </CityProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

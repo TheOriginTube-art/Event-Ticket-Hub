@@ -8,12 +8,11 @@
 
 export interface CheckoutInput {
   sessionId: number;
-  ticketCategoryId: number;
   /**
-     * @minimum 1
-     * @maximum 10
+     * @minItems 1
+     * @maxItems 10
      */
-  quantity: number;
+  seatIds: number[];
   /** @minLength 1 */
   customerName: string;
   /** @minLength 3 */

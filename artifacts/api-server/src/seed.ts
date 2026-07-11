@@ -1,6 +1,33 @@
-import { db, eventsTable, sessionsTable, ticketCategoriesTable, venuesTable } from "@workspace/db";
+import { db, eventsTable, seatsTable, sessionsTable, ticketCategoriesTable, venuesTable } from "@workspace/db";
 import { logger } from "./lib/logger";
 import { getUncachableStripeClient } from "./stripeClient";
+
+const SEATS_PER_ROW = 12;
+const ROW_LETTERS = "АБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЩЭЮЯ";
+
+/** Generates a rectangular grid of seats (rows of SEATS_PER_ROW) for one ticket category, continuing row letters from `startRowIndex`. Returns the next free row index. */
+function buildSeatsForCategory(
+  sessionId: number,
+  ticketCategoryId: number,
+  seatsTotal: number,
+  startRowIndex: number,
+): { seats: { sessionId: number; ticketCategoryId: number; rowLabel: string; seatNumber: number }[]; nextRowIndex: number } {
+  const seats: { sessionId: number; ticketCategoryId: number; rowLabel: string; seatNumber: number }[] = [];
+  let remaining = seatsTotal;
+  let rowIndex = startRowIndex;
+
+  while (remaining > 0) {
+    const rowLabel = ROW_LETTERS[rowIndex % ROW_LETTERS.length] ?? String(rowIndex);
+    const seatsInRow = Math.min(SEATS_PER_ROW, remaining);
+    for (let seatNumber = 1; seatNumber <= seatsInRow; seatNumber++) {
+      seats.push({ sessionId, ticketCategoryId, rowLabel, seatNumber });
+    }
+    remaining -= seatsInRow;
+    rowIndex++;
+  }
+
+  return { seats, nextRowIndex: rowIndex };
+}
 
 type PriceTier = { name: string; priceCents: number; seatsTotal: number };
 type SessionDef = { venueName: string; hall: string; daysFromNow: number; hour: number; minute: number };
@@ -392,15 +419,33 @@ export async function seedIfEmpty(): Promise<void> {
         throw new Error(`Failed to insert session for ${evt.title}`);
       }
 
+      let rowIndex = 0;
       for (const tier of evt.priceTiers) {
-        await db.insert(ticketCategoriesTable).values({
-          sessionId: sessionRow.id,
-          name: tier.name,
-          priceCents: tier.priceCents,
-          seatsTotal: tier.seatsTotal,
-          seatsAvailable: tier.seatsTotal,
-          stripePriceId: priceIdByTier.get(tier.name),
-        });
+        const [categoryRow] = await db
+          .insert(ticketCategoriesTable)
+          .values({
+            sessionId: sessionRow.id,
+            name: tier.name,
+            priceCents: tier.priceCents,
+            seatsTotal: tier.seatsTotal,
+            stripePriceId: priceIdByTier.get(tier.name),
+          })
+          .returning();
+
+        if (!categoryRow) {
+          throw new Error(`Failed to insert ticket category ${tier.name} for ${evt.title}`);
+        }
+
+        const { seats, nextRowIndex } = buildSeatsForCategory(
+          sessionRow.id,
+          categoryRow.id,
+          tier.seatsTotal,
+          rowIndex,
+        );
+        rowIndex = nextRowIndex;
+        if (seats.length > 0) {
+          await db.insert(seatsTable).values(seats);
+        }
       }
     }
 

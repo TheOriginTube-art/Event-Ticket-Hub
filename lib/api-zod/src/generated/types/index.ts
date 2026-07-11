@@ -6,9 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './authUser';
 export * from './checkoutInput';
 export * from './checkoutResult';
 export * from './eventDetail';
+export * from './eventSortOrder';
 export * from './eventSummary';
 export * from './eventType';
 export * from './getHomeHighlightsParams';
@@ -16,8 +18,13 @@ export * from './healthStatus';
 export * from './homeHighlights';
 export * from './listEventsParams';
 export * from './listVenuesParams';
+export * from './loginInput';
 export * from './orderDetail';
 export * from './orderDetailStatus';
+export * from './orderSeat';
+export * from './registerInput';
+export * from './seat';
+export * from './seatStatus';
 export * from './sessionDetail';
 export * from './sessionSummary';
 export * from './ticketCategory';

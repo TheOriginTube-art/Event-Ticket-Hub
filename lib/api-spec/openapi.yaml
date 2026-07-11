@@ -22,6 +22,10 @@ tags:
     description: Order lookup
   - name: home
     description: Home page summaries
+  - name: auth
+    description: Account registration, login and session management
+  - name: seats
+    description: Seat maps for a session
 paths:
   /healthz:
     get:
@@ -97,6 +101,12 @@ paths:
           description: Search by title
           schema:
             type: string
+        - name: sort
+          in: query
+          required: false
+          description: Sort order
+          schema:
+            $ref: "#/components/schemas/EventSortOrder"
       responses:
         "200":
           description: List of events
@@ -149,11 +159,34 @@ paths:
         "404":
           description: Session not found
 
+  /sessions/{id}/seats:
+    get:
+      operationId: getSessionSeats
+      tags: [seats]
+      summary: Get the seat map for a session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Seat map
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Seat"
+        "404":
+          description: Session not found
+
   /checkout:
     post:
       operationId: createCheckout
       tags: [checkout]
-      summary: Create a Stripe Checkout session to purchase tickets
+      summary: Create an order for the selected seats
       requestBody:
         required: true
         content:
@@ -162,15 +195,15 @@ paths:
               $ref: "#/components/schemas/CheckoutInput"
       responses:
         "200":
-          description: Checkout session created
+          description: Order created
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/CheckoutResult"
         "400":
-          description: Invalid input or not enough seats available
+          description: Invalid input or seats no longer available
         "404":
-          description: Session or ticket category not found
+          description: Session or seat not found
 
   /orders/{id}:
     get:
@@ -192,6 +225,89 @@ paths:
                 $ref: "#/components/schemas/OrderDetail"
         "404":
           description: Order not found
+
+  /orders/mine:
+    get:
+      operationId: getMyOrders
+      tags: [orders]
+      summary: List orders for the logged-in user (order history / personal cabinet)
+      responses:
+        "200":
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrderDetail"
+        "401":
+          description: Not authenticated
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Create a new account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInput"
+      responses:
+        "200":
+          description: Account created and logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "400":
+          description: Invalid input or email already registered
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Log in with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "401":
+          description: Invalid credentials
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Log out and clear the session
+      responses:
+        "200":
+          description: Logged out
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get the currently logged-in user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "401":
+          description: Not authenticated
 
   /home/highlights:
     get:
@@ -226,6 +342,10 @@ components:
       type: string
       enum: [movie, theater]
 
+    EventSortOrder:
+      type: string
+      enum: [dateAsc, priceAsc, priceDesc, ratingDesc]
+
     Venue:
       type: object
       required: [id, name, city, address]
@@ -255,6 +375,31 @@ components:
           type: integer
         seatsAvailable:
           type: integer
+
+    SeatStatus:
+      type: string
+      enum: [available, sold]
+
+    Seat:
+      type: object
+      required: [id, sessionId, ticketCategoryId, rowLabel, seatNumber, status, priceCents, categoryName]
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: integer
+        ticketCategoryId:
+          type: integer
+        rowLabel:
+          type: string
+        seatNumber:
+          type: integer
+        status:
+          $ref: "#/components/schemas/SeatStatus"
+        priceCents:
+          type: integer
+        categoryName:
+          type: string
 
     SessionSummary:
       type: object
@@ -377,16 +522,16 @@ components:
 
     CheckoutInput:
       type: object
-      required: [sessionId, ticketCategoryId, quantity, customerName, customerEmail]
+      required: [sessionId, seatIds, customerName, customerEmail]
       properties:
         sessionId:
           type: integer
-        ticketCategoryId:
-          type: integer
-        quantity:
-          type: integer
-          minimum: 1
-          maximum: 10
+        seatIds:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            type: integer
         customerName:
           type: string
           minLength: 1
@@ -403,20 +548,34 @@ components:
         orderId:
           type: integer
 
+    OrderSeat:
+      type: object
+      required: [id, rowLabel, seatNumber, categoryName, priceCents]
+      properties:
+        id:
+          type: integer
+        rowLabel:
+          type: string
+        seatNumber:
+          type: integer
+        categoryName:
+          type: string
+        priceCents:
+          type: integer
+
     OrderDetail:
       type: object
       required:
         [
           id,
           status,
-          quantity,
           totalAmountCents,
           customerName,
           customerEmail,
           createdAt,
           event,
           session,
-          ticketCategory,
+          seats,
         ]
       properties:
         id:
@@ -424,8 +583,6 @@ components:
         status:
           type: string
           enum: [pending, paid, cancelled]
-        quantity:
-          type: integer
         totalAmountCents:
           type: integer
         customerName:
@@ -439,8 +596,46 @@ components:
           $ref: "#/components/schemas/EventSummary"
         session:
           $ref: "#/components/schemas/SessionSummary"
-        ticketCategory:
-          $ref: "#/components/schemas/TicketCategory"
+        seats:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderSeat"
+
+    RegisterInput:
+      type: object
+      required: [email, password, name]
+      properties:
+        email:
+          type: string
+          minLength: 3
+        password:
+          type: string
+          minLength: 6
+        name:
+          type: string
+          minLength: 1
+
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+
+    AuthUser:
+      type: object
+      required: [id, email, name]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
 
     HomeHighlights:
       type: object

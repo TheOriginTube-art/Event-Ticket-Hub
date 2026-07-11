@@ -46,7 +46,8 @@ export const ListVenuesResponse = zod.array(ListVenuesResponseItem)
 export const ListEventsQueryParams = zod.object({
   "type": zod.enum(['movie', 'theater']).optional().describe('Filter by event type'),
   "city": zod.coerce.string().optional().describe('Filter to events that have sessions in this city'),
-  "search": zod.coerce.string().optional().describe('Search by title')
+  "search": zod.coerce.string().optional().describe('Search by title'),
+  "sort": zod.enum(['dateAsc', 'priceAsc', 'priceDesc', 'ratingDesc']).optional().describe('Sort order')
 })
 
 export const ListEventsResponseItem = zod.object({
@@ -140,9 +141,29 @@ export const GetSessionResponse = zod.object({
 
 
 /**
- * @summary Create a Stripe Checkout session to purchase tickets
+ * @summary Get the seat map for a session
  */
-export const createCheckoutBodyQuantityMax = 10;
+export const GetSessionSeatsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetSessionSeatsResponseItem = zod.object({
+  "id": zod.number(),
+  "sessionId": zod.number(),
+  "ticketCategoryId": zod.number(),
+  "rowLabel": zod.string(),
+  "seatNumber": zod.number(),
+  "status": zod.enum(['available', 'sold']),
+  "priceCents": zod.number(),
+  "categoryName": zod.string()
+})
+export const GetSessionSeatsResponse = zod.array(GetSessionSeatsResponseItem)
+
+
+/**
+ * @summary Create an order for the selected seats
+ */
+export const createCheckoutBodySeatIdsMax = 10;
 
 
 export const createCheckoutBodyCustomerEmailMin = 3;
@@ -151,8 +172,7 @@ export const createCheckoutBodyCustomerEmailMin = 3;
 
 export const CreateCheckoutBody = zod.object({
   "sessionId": zod.number(),
-  "ticketCategoryId": zod.number(),
-  "quantity": zod.number().min(1).max(createCheckoutBodyQuantityMax),
+  "seatIds": zod.array(zod.number()).min(1).max(createCheckoutBodySeatIdsMax),
   "customerName": zod.string().min(1),
   "customerEmail": zod.string().min(createCheckoutBodyCustomerEmailMin)
 })
@@ -173,7 +193,6 @@ export const GetOrderParams = zod.object({
 export const GetOrderResponse = zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'paid', 'cancelled']),
-  "quantity": zod.number(),
   "totalAmountCents": zod.number(),
   "customerName": zod.string(),
   "customerEmail": zod.string(),
@@ -203,14 +222,117 @@ export const GetOrderResponse = zod.object({
 }),
   "minPriceCents": zod.number().nullable()
 }),
-  "ticketCategory": zod.object({
+  "seats": zod.array(zod.object({
   "id": zod.number(),
-  "sessionId": zod.number(),
-  "name": zod.string(),
-  "priceCents": zod.number(),
-  "seatsTotal": zod.number(),
-  "seatsAvailable": zod.number()
+  "rowLabel": zod.string(),
+  "seatNumber": zod.number(),
+  "categoryName": zod.string(),
+  "priceCents": zod.number()
+}))
 })
+
+
+/**
+ * @summary List orders for the logged-in user (order history / personal cabinet)
+ */
+export const GetMyOrdersResponseItem = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['pending', 'paid', 'cancelled']),
+  "totalAmountCents": zod.number(),
+  "customerName": zod.string(),
+  "customerEmail": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "event": zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "type": zod.enum(['movie', 'theater']),
+  "posterUrl": zod.string().nullable(),
+  "genre": zod.string().nullable(),
+  "durationMinutes": zod.number().nullable(),
+  "ageRating": zod.string().nullable(),
+  "rating": zod.number().nullable(),
+  "sourceName": zod.string(),
+  "minPriceCents": zod.number().nullable()
+}),
+  "session": zod.object({
+  "id": zod.number(),
+  "eventId": zod.number(),
+  "startsAt": zod.coerce.date(),
+  "hall": zod.string().nullable(),
+  "venue": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "city": zod.string(),
+  "address": zod.string()
+}),
+  "minPriceCents": zod.number().nullable()
+}),
+  "seats": zod.array(zod.object({
+  "id": zod.number(),
+  "rowLabel": zod.string(),
+  "seatNumber": zod.number(),
+  "categoryName": zod.string(),
+  "priceCents": zod.number()
+}))
+})
+export const GetMyOrdersResponse = zod.array(GetMyOrdersResponseItem)
+
+
+/**
+ * @summary Create a new account
+ */
+export const registerBodyEmailMin = 3;
+
+export const registerBodyPasswordMin = 6;
+
+
+
+
+export const RegisterBody = zod.object({
+  "email": zod.string().min(registerBodyEmailMin),
+  "password": zod.string().min(registerBodyPasswordMin),
+  "name": zod.string().min(1)
+})
+
+export const RegisterResponse = zod.object({
+  "id": zod.number(),
+  "email": zod.string(),
+  "name": zod.string()
+})
+
+
+/**
+ * @summary Log in with email and password
+ */
+
+
+
+
+export const LoginBody = zod.object({
+  "email": zod.string().min(1),
+  "password": zod.string().min(1)
+})
+
+export const LoginResponse = zod.object({
+  "id": zod.number(),
+  "email": zod.string(),
+  "name": zod.string()
+})
+
+
+/**
+ * @summary Log out and clear the session
+ */
+export const LogoutResponse = zod.unknown()
+
+
+/**
+ * @summary Get the currently logged-in user
+ */
+export const GetMeResponse = zod.object({
+  "id": zod.number(),
+  "email": zod.string(),
+  "name": zod.string()
 })
 
 

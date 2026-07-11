@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { useParams } from "wouter";
-import { useGetEvent, useGetSession, useCreateCheckout } from "@workspace/api-client-react";
+import { useGetEvent, useGetSession, useGetSessionSeats, useCreateCheckout } from "@workspace/api-client-react";
+import type { Seat } from "@workspace/api-zod";
 import { formatRubles, formatDate, formatTime } from "@/lib/utils";
-import { Star, Clock, MapPin, Calendar, CreditCard, ChevronRight, Loader2, AlertCircle } from "lucide-react";
+import { Star, Clock, MapPin, Calendar, CreditCard, Loader2, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SeatMap } from "@/components/SeatMap";
+import { useAuth } from "@/lib/auth-context";
 
 export default function EventDetail() {
   const { id } = useParams();
@@ -193,114 +196,98 @@ export default function EventDetail() {
   );
 }
 
+const MAX_SEATS_PER_ORDER = 10;
+
 function SessionCheckout({ sessionId }: { sessionId: number }) {
-  const { data: session, isLoading } = useGetSession(sessionId);
+  const { data: seats, isLoading } = useGetSessionSeats(sessionId);
+  const { user } = useAuth();
   const checkoutMutation = useCreateCheckout();
-  
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
-  const [quantity, setQuantity] = useState(1);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+
+  const [selectedSeatIds, setSelectedSeatIds] = useState<number[]>([]);
+  const [name, setName] = useState(user?.name ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
 
   if (isLoading) {
     return <div className="py-4 text-center text-sm text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></div>;
   }
 
-  if (!session || session.ticketCategories.length === 0) {
+  if (!seats || seats.length === 0) {
     return <div className="py-4 text-center text-sm text-muted-foreground">Билеты недоступны</div>;
   }
 
-  const selectedCategory = session.ticketCategories.find(c => c.id === selectedCategoryId);
+  const selectedSeats = seats.filter((s) => selectedSeatIds.includes(s.id));
+  const totalCents = selectedSeats.reduce((sum, s) => sum + s.priceCents, 0);
+
+  const toggleSeat = (seat: Seat) => {
+    if (seat.status === "sold") return;
+    setSelectedSeatIds((prev) =>
+      prev.includes(seat.id) ? prev.filter((id) => id !== seat.id) : [...prev, seat.id],
+    );
+  };
 
   const handleCheckout = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCategoryId) return;
-    
-    checkoutMutation.mutate({
-      data: {
-        sessionId,
-        ticketCategoryId: selectedCategoryId,
-        quantity,
-        customerName: name,
-        customerEmail: email,
-      }
-    }, {
-      onSuccess: (result) => {
-        window.location.href = result.url;
-      }
-    });
+    if (selectedSeatIds.length === 0) return;
+
+    checkoutMutation.mutate(
+      {
+        data: {
+          sessionId,
+          seatIds: selectedSeatIds,
+          customerName: name,
+          customerEmail: email,
+        },
+      },
+      {
+        onSuccess: (result) => {
+          window.location.href = result.url;
+        },
+      },
+    );
   };
 
   return (
     <div className="pt-4 space-y-6">
       <div className="space-y-3">
-        <label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Выберите категорию</label>
-        <div className="grid grid-cols-1 gap-2">
-          {session.ticketCategories.map(cat => {
-            const available = cat.seatsAvailable > 0;
-            const isSelected = selectedCategoryId === cat.id;
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                disabled={!available}
-                onClick={() => setSelectedCategoryId(cat.id)}
-                className={`
-                  flex items-center justify-between p-3 rounded-lg border text-left transition-all
-                  ${!available ? 'opacity-50 cursor-not-allowed border-white/5 bg-white/5' : 
-                    isSelected ? 'border-primary bg-primary/10' : 'border-white/10 hover:border-white/20 bg-card'}
-                `}
-              >
-                <div>
-                  <div className="font-medium">{cat.name}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {available ? `Осталось мест: ${cat.seatsAvailable}` : 'Нет мест'}
-                  </div>
-                </div>
-                <div className={`font-semibold ${isSelected ? 'text-primary' : ''}`}>
-                  {formatRubles(cat.priceCents)}
-                </div>
-              </button>
-            );
-          })}
+        <label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          Выберите места (макс. {MAX_SEATS_PER_ORDER})
+        </label>
+        <div className="bg-black/20 rounded-xl border border-white/5 p-4">
+          <SeatMap
+            seats={seats}
+            selectedSeatIds={selectedSeatIds}
+            onToggleSeat={toggleSeat}
+            maxSelectable={MAX_SEATS_PER_ORDER}
+          />
         </div>
       </div>
 
-      {selectedCategory && (
+      {selectedSeats.length > 0 && (
         <form onSubmit={handleCheckout} className="space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="flex flex-wrap gap-2">
+            {selectedSeats.map((seat) => (
+              <Badge key={seat.id} variant="outline" className="border-primary/30 text-primary">
+                Ряд {seat.rowLabel}, место {seat.seatNumber} — {formatRubles(seat.priceCents)}
+              </Badge>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
             <div className="space-y-2">
-              <label className="text-xs text-muted-foreground ml-1">Количество</label>
-              <div className="flex items-center border border-white/10 rounded-lg overflow-hidden h-11 bg-background/50">
-                <button 
-                  type="button"
-                  className="px-4 h-full hover:bg-white/5 transition-colors border-r border-white/10"
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                >-</button>
-                <div className="flex-1 text-center font-medium">{quantity}</div>
-                <button 
-                  type="button"
-                  className="px-4 h-full hover:bg-white/5 transition-colors border-l border-white/10"
-                  onClick={() => setQuantity(Math.min(Math.min(10, selectedCategory.seatsAvailable), quantity + 1))}
-                >+</button>
-              </div>
-            </div>
-            
-            <div className="space-y-2 sm:col-span-2">
               <label className="text-xs text-muted-foreground ml-1">Ваши данные для билетов</label>
-              <Input 
-                required 
-                placeholder="Имя Фамилия" 
-                value={name} 
-                onChange={(e) => setName(e.target.value)} 
+              <Input
+                required
+                placeholder="Имя Фамилия"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 className="bg-card"
               />
-              <Input 
-                required 
-                type="email" 
-                placeholder="Email для отправки билетов" 
-                value={email} 
-                onChange={(e) => setEmail(e.target.value)} 
+              <Input
+                required
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="bg-card"
               />
             </div>
@@ -309,11 +296,11 @@ function SessionCheckout({ sessionId }: { sessionId: number }) {
           <div className="bg-black/30 rounded-lg p-4 flex items-center justify-between border border-white/5">
             <div>
               <div className="text-sm text-muted-foreground">К оплате</div>
-              <div className="text-2xl font-bold">{formatRubles(selectedCategory.priceCents * quantity)}</div>
+              <div className="text-2xl font-bold">{formatRubles(totalCents)}</div>
             </div>
-            <Button 
-              type="submit" 
-              size="lg" 
+            <Button
+              type="submit"
+              size="lg"
               className="gap-2"
               disabled={checkoutMutation.isPending}
             >
@@ -321,7 +308,7 @@ function SessionCheckout({ sessionId }: { sessionId: number }) {
               Купить
             </Button>
           </div>
-          
+
           {checkoutMutation.isError && (
             <div className="flex items-center gap-2 text-destructive text-sm bg-destructive/10 p-3 rounded-md">
               <AlertCircle className="w-4 h-4" />

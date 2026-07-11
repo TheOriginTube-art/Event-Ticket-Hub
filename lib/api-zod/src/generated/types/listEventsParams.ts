@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EventSortOrder } from './eventSortOrder';
 import type { EventType } from './eventType';
 
 export type ListEventsParams = {
@@ -20,4 +21,8 @@ city?: string;
  * Search by title
  */
 search?: string;
+/**
+ * Sort order
+ */
+sort?: EventSortOrder;
 };

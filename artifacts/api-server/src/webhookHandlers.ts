@@ -1,5 +1,5 @@
-import { eq, sql } from "drizzle-orm";
-import { db, ordersTable, ticketCategoriesTable } from "@workspace/db";
+import { eq, inArray } from "drizzle-orm";
+import { db, orderSeatsTable, ordersTable, seatsTable } from "@workspace/db";
 import { logger } from "./lib/logger";
 import { constructWebhookEvent, getStripeSync } from "./stripeClient";
 
@@ -40,18 +40,27 @@ async function markOrderPaid(stripeCheckoutSessionId: string): Promise<void> {
   }
 
   if (order.status === "paid") {
-    // Already processed (webhook retried) -- do not double-decrement seats.
+    // Already processed (webhook retried) -- do not double-mark seats sold.
     return;
   }
+
+  const orderSeats = await db.select().from(orderSeatsTable).where(eq(orderSeatsTable.orderId, order.id));
 
   await db.transaction(async (tx) => {
     await tx.update(ordersTable).set({ status: "paid" }).where(eq(ordersTable.id, order.id));
 
-    await tx
-      .update(ticketCategoriesTable)
-      .set({ seatsAvailable: sql`${ticketCategoriesTable.seatsAvailable} - ${order.quantity}` })
-      .where(eq(ticketCategoriesTable.id, order.ticketCategoryId));
+    if (orderSeats.length > 0) {
+      await tx
+        .update(seatsTable)
+        .set({ status: "sold" })
+        .where(
+          inArray(
+            seatsTable.id,
+            orderSeats.map((os) => os.seatId),
+          ),
+        );
+    }
   });
 
-  logger.info({ orderId: order.id }, "Order marked as paid, seats decremented");
+  logger.info({ orderId: order.id }, "Order marked as paid, seats marked sold");
 }

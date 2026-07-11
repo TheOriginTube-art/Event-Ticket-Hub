@@ -7,18 +7,17 @@
  */
 import type { EventSummary } from './eventSummary';
 import type { OrderDetailStatus } from './orderDetailStatus';
+import type { OrderSeat } from './orderSeat';
 import type { SessionSummary } from './sessionSummary';
-import type { TicketCategory } from './ticketCategory';
 
 export interface OrderDetail {
   id: number;
   status: OrderDetailStatus;
-  quantity: number;
   totalAmountCents: number;
   customerName: string;
   customerEmail: string;
   createdAt: Date;
   event: EventSummary;
   session: SessionSummary;
-  ticketCategory: TicketCategory;
+  seats: OrderSeat[];
 }
