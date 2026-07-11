@@ -59,6 +59,27 @@ git pull
 docker compose up -d --build
 ```
 
+## 6. Подключение своего домена и https
+
+Если у вас есть свой домен:
+
+1. В панели управления доменом добавьте A-запись, указывающую на IP вашего сервера.
+2. Дождитесь обновления DNS (обычно от нескольких минут до пары часов).
+3. Обновите `PUBLIC_BASE_URL` в `.env` на `http://ваш-домен` и выполните `docker compose up -d --build`.
+4. Чтобы включить защищённое соединение (https, замочек в браузере), выполните:
+
+```bash
+./enable-https.sh ваш-домен
+```
+
+Скрипт бесплатно получит SSL-сертификат (Let's Encrypt) и переключит сайт на https.
+Сертификат действует 90 дней; продлить его позже можно командой:
+
+```bash
+docker compose run --rm --entrypoint certbot certbot renew
+docker compose restart web
+```
+
 ## Подключение Stripe позже
 
 1. Создайте аккаунт на stripe.com, возьмите Secret key из раздела Developers → API keys.
