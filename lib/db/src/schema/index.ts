@@ -21,4 +21,8 @@ export * from "./venues";
 export * from "./events";
 export * from "./sessions";
 export * from "./ticketCategories";
+export * from "./seats";
+export * from "./users";
+export * from "./authSessions";
 export * from "./orders";
+export * from "./orderSeats";

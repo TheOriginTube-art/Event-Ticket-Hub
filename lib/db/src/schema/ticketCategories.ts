@@ -11,7 +11,6 @@ export const ticketCategoriesTable = pgTable("ticket_categories", {
   name: text("name").notNull(),
   priceCents: integer("price_cents").notNull(),
   seatsTotal: integer("seats_total").notNull(),
-  seatsAvailable: integer("seats_available").notNull(),
   stripePriceId: text("stripe_price_id"),
 });
 
