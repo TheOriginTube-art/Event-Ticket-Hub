@@ -145,12 +145,9 @@ export default function Home() {
                   {event.ageRating && <span className="px-1.5 py-0.5 border border-white/10 rounded text-[10px] leading-none">{event.ageRating}</span>}
                 </div>
                 
-                <div className="flex items-center justify-between mt-3">
+                <div className="mt-3">
                   <div className="text-sm font-medium">
                     от {formatRubles(event.minPriceCents)}
-                  </div>
-                  <div className="text-xs text-muted-foreground truncate max-w-[100px]">
-                    {event.sourceName}
                   </div>
                 </div>
               </Link>

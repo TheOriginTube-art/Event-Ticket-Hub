@@ -95,12 +95,6 @@ export default function EventDetail() {
                 {event.ageRating || '0+'}
               </div>
             </div>
-            <div className="space-y-1">
-              <div className="text-xs text-muted-foreground">Источник</div>
-              <div className="font-semibold truncate">
-                {event.sourceName}
-              </div>
-            </div>
           </div>
         </div>
 
