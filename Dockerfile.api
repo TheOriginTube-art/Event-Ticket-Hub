@@ -19,4 +19,8 @@ RUN pnpm --filter @workspace/api-server run build
 
 ENV NODE_ENV=production
 EXPOSE 8080
-CMD ["sh", "-c", "pnpm --filter @workspace/db run push-force && node --enable-source-maps /repo/artifacts/api-server/dist/index.mjs"]
+# Use an absolute path to the shell (/bin/sh) rather than the bare "sh" so
+# this can never accidentally resolve to a same-named file that ended up in
+# the build context (e.g. a stray "sh" file from a mistyped shell command
+# on the host, which "COPY . ." would otherwise pull into the image).
+CMD ["/bin/sh", "-c", "pnpm --filter @workspace/db run push-force && node --enable-source-maps /repo/artifacts/api-server/dist/index.mjs"]

@@ -6,3 +6,7 @@
 .agents
 screenshots
 /tmp
+# Stray shell-install scripts that sometimes end up in the repo root from
+# mistyped terminal commands (e.g. get.docker.com saved to a file named "sh").
+/sh
+/get-docker.sh
