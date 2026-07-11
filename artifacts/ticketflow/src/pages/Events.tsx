@@ -215,6 +215,13 @@ export default function Events() {
                     {event.genre && <span>{event.genre}</span>}
                     {event.ageRating && <span className="px-1.5 py-0.5 border border-white/10 rounded text-[10px] leading-none">{event.ageRating}</span>}
                   </div>
+
+                  {event.cities.length > 0 && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <MapPin className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">{event.cities.join(", ")}</span>
+                    </div>
+                  )}
                   
                   <div className="mt-3">
                     <div className="text-sm font-medium">

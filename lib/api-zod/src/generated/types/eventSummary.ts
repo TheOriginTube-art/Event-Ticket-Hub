@@ -24,4 +24,6 @@ export interface EventSummary {
   sourceName: string;
   /** @nullable */
   minPriceCents: number | null;
+  /** Distinct cities where this event has scheduled sessions. */
+  cities: string[];
 }

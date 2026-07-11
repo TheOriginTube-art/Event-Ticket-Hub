@@ -60,7 +60,8 @@ export const ListEventsResponseItem = zod.object({
   "ageRating": zod.string().nullable(),
   "rating": zod.number().nullable(),
   "sourceName": zod.string(),
-  "minPriceCents": zod.number().nullable()
+  "minPriceCents": zod.number().nullable(),
+  "cities": zod.array(zod.string()).describe('Distinct cities where this event has scheduled sessions.')
 })
 export const ListEventsResponse = zod.array(ListEventsResponseItem)
 
@@ -135,7 +136,8 @@ export const GetSessionResponse = zod.object({
   "ageRating": zod.string().nullable(),
   "rating": zod.number().nullable(),
   "sourceName": zod.string(),
-  "minPriceCents": zod.number().nullable()
+  "minPriceCents": zod.number().nullable(),
+  "cities": zod.array(zod.string()).describe('Distinct cities where this event has scheduled sessions.')
 })
 })
 
@@ -209,7 +211,8 @@ export const GetOrderResponse = zod.object({
   "ageRating": zod.string().nullable(),
   "rating": zod.number().nullable(),
   "sourceName": zod.string(),
-  "minPriceCents": zod.number().nullable()
+  "minPriceCents": zod.number().nullable(),
+  "cities": zod.array(zod.string()).describe('Distinct cities where this event has scheduled sessions.')
 }),
   "session": zod.object({
   "id": zod.number(),
@@ -256,7 +259,8 @@ export const GetMyOrdersResponseItem = zod.object({
   "ageRating": zod.string().nullable(),
   "rating": zod.number().nullable(),
   "sourceName": zod.string(),
-  "minPriceCents": zod.number().nullable()
+  "minPriceCents": zod.number().nullable(),
+  "cities": zod.array(zod.string()).describe('Distinct cities where this event has scheduled sessions.')
 }),
   "session": zod.object({
   "id": zod.number(),
@@ -371,7 +375,8 @@ export const MarkOrderPaidResponse = zod.object({
   "ageRating": zod.string().nullable(),
   "rating": zod.number().nullable(),
   "sourceName": zod.string(),
-  "minPriceCents": zod.number().nullable()
+  "minPriceCents": zod.number().nullable(),
+  "cities": zod.array(zod.string()).describe('Distinct cities where this event has scheduled sessions.')
 }),
   "session": zod.object({
   "id": zod.number(),
@@ -445,7 +450,8 @@ export const ListAdminOrdersResponseItem = zod.object({
   "ageRating": zod.string().nullable(),
   "rating": zod.number().nullable(),
   "sourceName": zod.string(),
-  "minPriceCents": zod.number().nullable()
+  "minPriceCents": zod.number().nullable(),
+  "cities": zod.array(zod.string()).describe('Distinct cities where this event has scheduled sessions.')
 }),
   "session": zod.object({
   "id": zod.number(),
@@ -497,7 +503,8 @@ export const ConfirmAdminOrderResponse = zod.object({
   "ageRating": zod.string().nullable(),
   "rating": zod.number().nullable(),
   "sourceName": zod.string(),
-  "minPriceCents": zod.number().nullable()
+  "minPriceCents": zod.number().nullable(),
+  "cities": zod.array(zod.string()).describe('Distinct cities where this event has scheduled sessions.')
 }),
   "session": zod.object({
   "id": zod.number(),
@@ -548,7 +555,8 @@ export const RejectAdminOrderResponse = zod.object({
   "ageRating": zod.string().nullable(),
   "rating": zod.number().nullable(),
   "sourceName": zod.string(),
-  "minPriceCents": zod.number().nullable()
+  "minPriceCents": zod.number().nullable(),
+  "cities": zod.array(zod.string()).describe('Distinct cities where this event has scheduled sessions.')
 }),
   "session": zod.object({
   "id": zod.number(),
@@ -649,7 +657,8 @@ export const GetHomeHighlightsResponse = zod.object({
   "ageRating": zod.string().nullable(),
   "rating": zod.number().nullable(),
   "sourceName": zod.string(),
-  "minPriceCents": zod.number().nullable()
+  "minPriceCents": zod.number().nullable(),
+  "cities": zod.array(zod.string()).describe('Distinct cities where this event has scheduled sessions.')
 })),
   "totalUpcomingSessions": zod.number(),
   "citiesCount": zod.number(),

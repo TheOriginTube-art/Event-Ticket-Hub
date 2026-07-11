@@ -728,6 +728,7 @@ components:
           rating,
           sourceName,
           minPriceCents,
+          cities,
         ]
       properties:
         id:
@@ -750,6 +751,11 @@ components:
           type: string
         minPriceCents:
           type: ["integer", "null"]
+        cities:
+          type: array
+          description: Distinct cities where this event has scheduled sessions.
+          items:
+            type: string
 
     EventDetail:
       type: object
