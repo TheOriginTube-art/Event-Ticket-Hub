@@ -1,12 +1,12 @@
 import { Link, useLocation } from "wouter";
 import { Ticket, Search, MapPin, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useHealthCheck, useListCities } from "@workspace/api-client-react";
+import { useHealthCheck } from "@workspace/api-client-react";
 import { useCity } from "@/lib/city-context";
+import { RUSSIAN_CITIES } from "@/lib/russian-cities";
 
 function CitySelector() {
   const { city, setCity } = useCity();
-  const { data: cities } = useListCities();
 
   return (
     <div className="relative">
@@ -19,7 +19,7 @@ function CitySelector() {
         className="h-9 rounded-full border border-white/10 bg-white/5 pl-8 pr-7 text-sm font-medium text-foreground appearance-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary hover:border-white/20 transition-colors"
       >
         <option value="">Все города</option>
-        {cities?.map((c) => (
+        {RUSSIAN_CITIES.map((c) => (
           <option key={c} value={c}>
             {c}
           </option>

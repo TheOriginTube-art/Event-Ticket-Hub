@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useListEvents, useListCities } from "@workspace/api-client-react";
+import { useListEvents } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
 import { Search, Film, Theater, Star, MapPin, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRubles } from "@/lib/utils";
 import { useCity } from "@/lib/city-context";
+import { RUSSIAN_CITIES } from "@/lib/russian-cities";
 
 export default function Events() {
   const [location, setLocation] = useLocation();
@@ -43,8 +44,6 @@ export default function Events() {
     city: city || undefined,
     search: debouncedSearch || undefined,
   });
-
-  const { data: cities } = useListCities();
 
   const handleTypeChange = (newType: "movie" | "theater" | undefined) => {
     setType(newType);
@@ -114,7 +113,7 @@ export default function Events() {
                 onChange={(e) => setCity(e.target.value)}
               >
                 <option value="">Любой город</option>
-                {cities?.map(c => (
+                {RUSSIAN_CITIES.map(c => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
