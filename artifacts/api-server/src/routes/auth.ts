@@ -29,7 +29,9 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   }
 
   const passwordHash = await hashPassword(password);
-  const [user] = await db.insert(usersTable).values({ email, passwordHash, name }).returning();
+  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const isAdmin = !!adminEmail && email === adminEmail;
+  const [user] = await db.insert(usersTable).values({ email, passwordHash, name, isAdmin }).returning();
   if (!user) {
     res.status(500).json({ error: "Failed to create user" });
     return;
@@ -37,7 +39,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
 
   const { token, expiresAt } = await createAuthSession(user.id);
   setAuthCookie(res, token, expiresAt);
-  res.json(RegisterResponse.parse({ id: user.id, email: user.email, name: user.name }));
+  res.json(RegisterResponse.parse({ id: user.id, email: user.email, name: user.name, isAdmin: user.isAdmin }));
 });
 
 router.post("/auth/login", async (req, res): Promise<void> => {
@@ -56,7 +58,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
   const { token, expiresAt } = await createAuthSession(user.id);
   setAuthCookie(res, token, expiresAt);
-  res.json(LoginResponse.parse({ id: user.id, email: user.email, name: user.name }));
+  res.json(LoginResponse.parse({ id: user.id, email: user.email, name: user.name, isAdmin: user.isAdmin }));
 });
 
 router.post("/auth/logout", (_req, res): void => {
