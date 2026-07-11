@@ -430,6 +430,180 @@ const additionalEventDefs: EventDef[] = [
       { venueName: "Казанский ТЮЗ", hall: "Основная сцена", daysFromNow: 12, hour: 19, minute: 30 },
     ],
   },
+  {
+    title: "Пасть",
+    type: "movie",
+    description:
+      "Компания друзей отправляется в круиз по диким озёрам Луизианы, желая увидеть редких животных в естественной среде — и становится дичью сама.",
+    posterUrl: "https://static.kinoafisha.info/k/movie_posters/110/upload/movie_posters/6/4/9/8384946/574544069493.jpg",
+    genre: "Ужасы",
+    durationMinutes: 92,
+    ageRating: "18+",
+    rating: 6.2,
+    sourceName: "Kinoteatr.ru",
+    priceTiers: MOVIE_TIERS,
+    sessions: [
+      { venueName: "Формула Кино Заневский", hall: "Зал 4", daysFromNow: 1, hour: 22, minute: 15 },
+      { venueName: "Синема Парк Кольцо", hall: "Зал 5", daysFromNow: 4, hour: 21, minute: 30 },
+    ],
+  },
+  {
+    title: "Иллюзия убийства",
+    type: "movie",
+    description:
+      "Испанский психологический триллер: похищенный брат возвращается домой с пугающими тайнами, и герою предстоит распутать клубок лжи ненадёжных рассказчиков.",
+    posterUrl: "https://leonardo.osnova.io/21e99680-fe3c-5853-81d7-77010a2c03db/-/scale_crop/592x/",
+    genre: "Детектив",
+    durationMinutes: 108,
+    ageRating: "18+",
+    rating: 6.8,
+    sourceName: "Lifehacker.ru",
+    priceTiers: MOVIE_TIERS,
+    sessions: [
+      { venueName: "Каро 11 Октябрь", hall: "Зал 4", daysFromNow: 2, hour: 20, minute: 45 },
+      { venueName: "Пионер", hall: "Зал 2", daysFromNow: 5, hour: 19, minute: 15 },
+    ],
+  },
+  {
+    title: "Майкл",
+    type: "movie",
+    description:
+      "Масштабный музыкальный байопик о жизни и творчестве короля поп-музыки Майкла Джексона — от вундеркинда из Гэри, Индиана, до самого известного артиста планеты.",
+    posterUrl: "https://s12.stc.all.kpcdn.net/afisha/msk/wp-content/uploads/sites/5/2023/01/kadr-iz-trejlera-filma-majkl-2026-1.jpg",
+    genre: "Биография",
+    durationMinutes: 127,
+    ageRating: "18+",
+    rating: 8.1,
+    sourceName: "Кинопоиск Афиша",
+    priceTiers: MOVIE_TIERS,
+    sessions: [
+      { venueName: "Каро 11 Октябрь", hall: "Зал 1", daysFromNow: 2, hour: 18, minute: 0 },
+      { venueName: "Формула Кино Заневский", hall: "Зал 5", daysFromNow: 4, hour: 20, minute: 30 },
+    ],
+  },
+  {
+    title: "Мастер и Маргарита",
+    type: "theater",
+    description:
+      "Рок-мюзикл по роману Булгакова: Москва, где сталкиваются Воланд и его свита, влюблённые Мастер и Маргарита, поэт Иван Бездомный и вся человеческая суета.",
+    posterUrl: "https://peterburg.center/sites/default/files/img/event_m/2021-12/2021-12-26_07-59-37.png",
+    genre: "Мюзикл",
+    durationMinutes: 150,
+    ageRating: "16+",
+    rating: 8.9,
+    sourceName: "Kuda-SPb.ru",
+    priceTiers: THEATER_TIERS,
+    sessions: [
+      { venueName: "Театр ЛДМ", hall: "Новая-новая сцена", daysFromNow: 6, hour: 19, minute: 0 },
+      { venueName: "Театр ЛДМ", hall: "Новая-новая сцена", daysFromNow: 13, hour: 19, minute: 0 },
+    ],
+  },
+  {
+    title: "Лолита",
+    type: "theater",
+    description:
+      "Хоррор-мюзикл по мотивам романа Набокова: мрачная и завораживающая история одержимости, рассказанная языком современного музыкального театра.",
+    posterUrl: "https://i2020.otzovik.com/2020/04/16/9838651/img/1279705_12608479_t.jpeg",
+    genre: "Мюзикл",
+    durationMinutes: 140,
+    ageRating: "18+",
+    rating: 8.3,
+    sourceName: "Otzovik.com",
+    priceTiers: THEATER_TIERS,
+    sessions: [
+      { venueName: "Театр ЛДМ", hall: "Основная сцена", daysFromNow: 8, hour: 19, minute: 30 },
+    ],
+  },
+  {
+    title: "Дон Кихот",
+    type: "theater",
+    description:
+      "Гастроли Театра балета имени Л. Якобсона: искромётный испанский колорит и виртуозная классическая хореография в одном из самых зрелищных балетов репертуара.",
+    posterUrl: "https://cdn.kassir.ru/spb/poster_1280_392/f3/f39682ab2b3dfe883450b376495dd4b7.jpg",
+    genre: "Балет",
+    durationMinutes: 135,
+    ageRating: "6+",
+    rating: 8.7,
+    sourceName: "Alexandrinskytheatre.ru",
+    priceTiers: THEATER_TIERS,
+    sessions: [
+      { venueName: "Александринский театр", hall: "Основная сцена", daysFromNow: 10, hour: 18, minute: 0 },
+    ],
+  },
+  {
+    title: "Женитьба",
+    type: "theater",
+    description:
+      "Гоголевская комедия о нерешительном женихе Подколёсине, свахе и незадачливом сватовстве — острая сатира на страх перемен, разыгранная на исторической сцене.",
+    posterUrl: "https://s.afisha.ru/mediastorage/82/42/47e397fe9e71412db794feb14282.jpg",
+    genre: "Комедия",
+    durationMinutes: 145,
+    ageRating: "12+",
+    rating: 8.4,
+    sourceName: "Kassir.ru",
+    priceTiers: THEATER_TIERS,
+    sessions: [
+      { venueName: "Александринский театр", hall: "Основная сцена", daysFromNow: 11, hour: 19, minute: 0 },
+    ],
+  },
+  {
+    title: "Когда я снова стану маленьким",
+    type: "theater",
+    description:
+      "Музыкальный спектакль по произведениям Януша Корчака, лауреат «Золотой маски» — трогательная история о детстве, доверии и праве быть услышанным.",
+    posterUrl: "https://s2.afisha.ru/mediastorage/a9/c7/d989fcc3502c4d5ca7d8e315c7a9.jpg",
+    genre: "Музыкальный спектакль",
+    durationMinutes: 80,
+    ageRating: "6+",
+    rating: 8.9,
+    sourceName: "BDT.spb.ru",
+    priceTiers: THEATER_TIERS,
+    sessions: [
+      { venueName: "БДТ имени Товстоногова", hall: "Малая сцена", daysFromNow: 6, hour: 12, minute: 0 },
+    ],
+  },
+  {
+    title: "Ничего не бойся, я с тобой",
+    type: "theater",
+    description:
+      "Хит-мюзикл на песни легендарной группы «Секрет» — романтичная история любви, дружбы и рок-н-ролльной юности восьмидесятых.",
+    posterUrl: "https://cdn.lifehacker.ru/wp-content/uploads/2026/04/Ap5ZQMoLZ4PJXKAb__Rq6quQpvHRsVj5KWawbpJ3k4kVoCnFhkv__hiqlSh9sX_WdAOefn1O6Dszqwpg_btjiQ3D3D_uid0filenameD0BCD18ED0B7D0B8D0BAD0BB2022D09DD0B8D187D0B5D0B3D0BE20D0BDD0B520D0B1D0BED0B9D181D18F2C20_1776174970.jpg",
+    genre: "Мюзикл",
+    durationMinutes: 150,
+    ageRating: "12+",
+    rating: 9.6,
+    sourceName: "Яндекс Афиша",
+    priceTiers: THEATER_TIERS,
+    sessions: [
+      { venueName: "МДМ", hall: "Основная сцена", daysFromNow: 7, hour: 19, minute: 0 },
+      { venueName: "МДМ", hall: "Основная сцена", daysFromNow: 15, hour: 19, minute: 0 },
+    ],
+  },
+  {
+    title: "Кабаре",
+    type: "theater",
+    description:
+      "Постановка Евгения Писарева по легендарному мюзиклу — Берлин на пороге больших перемен, кабаре «Кит-Кэт-Клуб» и судьбы, которые история уже не пощадит.",
+    posterUrl: "https://s1.afisha.ru/mediastorage/48/f0/880b2cb7bc4a492a8911359ff048.jpg",
+    genre: "Мюзикл",
+    durationMinutes: 165,
+    ageRating: "18+",
+    rating: 9.0,
+    sourceName: "Theatreofnations.ru",
+    priceTiers: THEATER_TIERS,
+    sessions: [
+      { venueName: "Театр Наций", hall: "Основная сцена", daysFromNow: 9, hour: 19, minute: 0 },
+      { venueName: "Театр Наций", hall: "Основная сцена", daysFromNow: 16, hour: 19, minute: 0 },
+    ],
+  },
+];
+
+/** Extra venues referenced by `additionalEventDefs` that aren't in the original `venueDefs`. */
+const additionalVenueDefs = [
+  { name: "Театр ЛДМ", city: "Санкт-Петербург", address: "улица Профессора Попова, 47" },
+  { name: "Александринский театр", city: "Санкт-Петербург", address: "площадь Островского, 6" },
+  { name: "МДМ", city: "Москва", address: "Комсомольский проспект, 28" },
+  { name: "Театр Наций", city: "Москва", address: "улица Петровка, 3" },
 ];
 
 function sessionDate(daysFromNow: number, hour: number, minute: number): Date {
@@ -598,6 +772,12 @@ export async function seedAdditionalEventsIfMissing(): Promise<void> {
 
   const venues = await db.select().from(venuesTable);
   const venueIdByName = new Map(venues.map((v) => [v.name, v.id]));
+
+  for (const v of additionalVenueDefs) {
+    if (venueIdByName.has(v.name)) continue;
+    const [row] = await db.insert(venuesTable).values(v).returning();
+    if (row) venueIdByName.set(v.name, row.id);
+  }
 
   logger.info(`Seeding ${toInsert.length} additional event(s) from other afisha sites...`);
   for (const evt of toInsert) {
