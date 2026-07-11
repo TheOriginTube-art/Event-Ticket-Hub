@@ -26,3 +26,4 @@ export * from "./users";
 export * from "./authSessions";
 export * from "./orders";
 export * from "./orderSeats";
+export * from "./paymentSettings";

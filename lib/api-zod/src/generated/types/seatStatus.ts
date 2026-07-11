@@ -11,5 +11,6 @@ export type SeatStatus = typeof SeatStatus[keyof typeof SeatStatus];
 
 export const SeatStatus = {
   available: 'available',
+  reserved: 'reserved',
   sold: 'sold',
 } as const;

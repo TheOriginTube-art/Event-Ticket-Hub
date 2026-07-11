@@ -48,6 +48,7 @@ export type SeatStatus = typeof SeatStatus[keyof typeof SeatStatus];
 
 export const SeatStatus = {
   available: 'available',
+  reserved: 'reserved',
   sold: 'sold',
 } as const;
 
@@ -149,22 +150,34 @@ export interface OrderSeat {
   priceCents: number;
 }
 
-export type OrderDetailStatus = typeof OrderDetailStatus[keyof typeof OrderDetailStatus];
+export type OrderStatus = typeof OrderStatus[keyof typeof OrderStatus];
 
 
-export const OrderDetailStatus = {
+export const OrderStatus = {
   pending: 'pending',
+  awaiting_confirmation: 'awaiting_confirmation',
   paid: 'paid',
   cancelled: 'cancelled',
 } as const;
 
+export type OrderPaymentMethod = typeof OrderPaymentMethod[keyof typeof OrderPaymentMethod];
+
+
+export const OrderPaymentMethod = {
+  ozon_qr: 'ozon_qr',
+  stripe: 'stripe',
+} as const;
+
 export interface OrderDetail {
   id: number;
-  status: OrderDetailStatus;
+  status: OrderStatus;
+  paymentMethod: OrderPaymentMethod;
   totalAmountCents: number;
   customerName: string;
   customerEmail: string;
   createdAt: string;
+  /** @nullable */
+  expiresAt: string | null;
   event: EventSummary;
   session: SessionSummary;
   seats: OrderSeat[];
@@ -190,6 +203,54 @@ export interface AuthUser {
   id: number;
   email: string;
   name: string;
+  isAdmin: boolean;
+}
+
+export interface PaymentSettings {
+  /** @nullable */
+  ozonQrImageUrl: string | null;
+  /** @nullable */
+  instructions: string | null;
+}
+
+export interface UpdatePaymentSettingsInput {
+  /**
+     * objectPath returned from the storage upload endpoint
+     * @nullable
+     */
+  ozonQrImagePath?: string | null;
+  /** @nullable */
+  instructions: string | null;
+}
+
+export interface UploadUrlRequest {
+  /**
+     * Original file name.
+     * @minLength 1
+     */
+  name: string;
+  /**
+     * File size in bytes.
+     * @minimum 1
+     */
+  size: number;
+  /**
+     * MIME type of the file (e.g. `image/jpeg`).
+     * @minLength 1
+     */
+  contentType: string;
+}
+
+export interface UploadUrlResponse {
+  /** Presigned GCS URL for PUT upload. */
+  uploadURL: string;
+  /** Normalized object path (e.g. `/objects/uploads/uuid`). Store this in your database. */
+  objectPath: string;
+  metadata?: UploadUrlRequest;
+}
+
+export interface ErrorEnvelope {
+  error: string;
 }
 
 export interface HomeHighlights {
@@ -221,6 +282,24 @@ search?: string;
  */
 sort?: EventSortOrder;
 };
+
+export type ListAdminOrdersParams = {
+/**
+ * Filter by order status. Defaults to pending + awaiting_confirmation.
+ */
+status?: ListAdminOrdersStatus;
+};
+
+export type ListAdminOrdersStatus = typeof ListAdminOrdersStatus[keyof typeof ListAdminOrdersStatus];
+
+
+export const ListAdminOrdersStatus = {
+  pending: 'pending',
+  awaiting_confirmation: 'awaiting_confirmation',
+  paid: 'paid',
+  cancelled: 'cancelled',
+  all: 'all',
+} as const;
 
 export type GetHomeHighlightsParams = {
 city?: string;

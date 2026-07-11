@@ -71,12 +71,21 @@ export function Shell({ children }: { children: React.ReactNode }) {
               </Button>
             </Link>
             {isAuthLoading ? null : user ? (
-              <Link href="/account">
-                <Button variant="outline" className="hidden sm:flex rounded-full px-5 gap-2 border-white/10 hover:border-primary/50 hover:bg-primary/10">
-                  <User className="w-4 h-4" />
-                  {user.name.split(" ")[0]}
-                </Button>
-              </Link>
+              <>
+                {user.isAdmin && (
+                  <Link href="/admin/orders">
+                    <Button variant="outline" className="hidden sm:flex rounded-full px-5 border-white/10 hover:border-primary/50 hover:bg-primary/10">
+                      Админ
+                    </Button>
+                  </Link>
+                )}
+                <Link href="/account">
+                  <Button variant="outline" className="hidden sm:flex rounded-full px-5 gap-2 border-white/10 hover:border-primary/50 hover:bg-primary/10">
+                    <User className="w-4 h-4" />
+                    {user.name.split(" ")[0]}
+                  </Button>
+                </Link>
+              </>
             ) : (
               <Link href="/login">
                 <Button variant="outline" className="hidden sm:flex rounded-full px-6 border-white/10 hover:border-primary/50 hover:bg-primary/10">

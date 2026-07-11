@@ -6,9 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface AuthUser {
-  id: number;
-  email: string;
-  name: string;
-  isAdmin: boolean;
+export interface ErrorEnvelope {
+  error: string;
 }

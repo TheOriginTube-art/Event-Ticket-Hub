@@ -4,6 +4,7 @@ import { db, orderSeatsTable, ordersTable, seatsTable, sessionsTable, ticketCate
 import { CreateCheckoutBody, CreateCheckoutResponse } from "@workspace/api-zod";
 import { getUncachableStripeClient } from "../stripeClient";
 import { logger } from "../lib/logger";
+import { QR_PAYMENT_WINDOW_MINUTES, releaseExpiredOrders } from "../lib/orderExpiry";
 
 const router: IRouter = Router();
 
@@ -15,6 +16,8 @@ router.post("/checkout", async (req, res): Promise<void> => {
   }
   const { sessionId, seatIds, customerName, customerEmail } = parsed.data;
   const uniqueSeatIds = [...new Set(seatIds)];
+
+  await releaseExpiredOrders();
 
   const [session] = await db.select().from(sessionsTable).where(eq(sessionsTable.id, sessionId));
   if (!session) {
@@ -44,35 +47,36 @@ router.post("/checkout", async (req, res): Promise<void> => {
     return sum + (category?.priceCents ?? 0);
   }, 0);
 
-  const [order] = await db
-    .insert(ordersTable)
-    .values({
-      sessionId,
-      userId: req.user?.id ?? null,
-      totalAmountCents,
-      customerName,
-      customerEmail,
-      status: "pending",
-    })
-    .returning();
-
-  if (!order) {
-    res.status(500).json({ error: "Failed to create order" });
-    return;
-  }
-
-  await db.insert(orderSeatsTable).values(
-    seats.map((seat) => ({
-      orderId: order.id,
-      seatId: seat.id,
-      priceCents: categoryById.get(seat.ticketCategoryId)?.priceCents ?? 0,
-    })),
-  );
-
   const origin = `${req.protocol}://${req.get("host")}`;
   const allStripePricesConfigured = seats.every((seat) => categoryById.get(seat.ticketCategoryId)?.stripePriceId);
 
   if (allStripePricesConfigured) {
+    const [order] = await db
+      .insert(ordersTable)
+      .values({
+        sessionId,
+        userId: req.user?.id ?? null,
+        totalAmountCents,
+        customerName,
+        customerEmail,
+        status: "pending",
+        paymentMethod: "stripe",
+      })
+      .returning();
+
+    if (!order) {
+      res.status(500).json({ error: "Failed to create order" });
+      return;
+    }
+
+    await db.insert(orderSeatsTable).values(
+      seats.map((seat) => ({
+        orderId: order.id,
+        seatId: seat.id,
+        priceCents: categoryById.get(seat.ticketCategoryId)?.priceCents ?? 0,
+      })),
+    );
+
     try {
       const stripe = await getUncachableStripeClient();
       const checkoutSession = await stripe.checkout.sessions.create({
@@ -96,24 +100,57 @@ router.post("/checkout", async (req, res): Promise<void> => {
       res.json(CreateCheckoutResponse.parse({ url: checkoutSession.url, orderId: order.id }));
       return;
     } catch (err) {
-      logger.warn({ err, orderId: order.id }, "Stripe checkout failed, falling back to instant confirmation");
+      logger.warn({ err, orderId: order.id }, "Stripe checkout failed, falling back to Ozon QR payment");
+      await createOzonQrPayment(order.id, uniqueSeatIds);
+      res.json(CreateCheckoutResponse.parse({ url: `${origin}/checkout/pay?orderId=${order.id}`, orderId: order.id }));
+      return;
     }
   }
 
-  // Stripe isn't connected/configured yet (or the checkout call failed) --
-  // confirm the order immediately so the demo flow keeps working. Once
-  // Stripe is connected, the branch above takes over automatically.
-  await db.transaction(async (tx) => {
-    await tx.update(ordersTable).set({ status: "paid" }).where(eq(ordersTable.id, order.id));
-    await tx
-      .update(seatsTable)
-      .set({ status: "sold" })
-      .where(inArray(seatsTable.id, uniqueSeatIds));
-  });
+  // No Stripe price configured for these seats -- pay via Ozon Bank QR code,
+  // confirmed manually by an admin.
+  const [order] = await db
+    .insert(ordersTable)
+    .values({
+      sessionId,
+      userId: req.user?.id ?? null,
+      totalAmountCents,
+      customerName,
+      customerEmail,
+      status: "pending",
+      paymentMethod: "ozon_qr",
+      expiresAt: new Date(Date.now() + QR_PAYMENT_WINDOW_MINUTES * 60 * 1000),
+    })
+    .returning();
 
-  res.json(
-    CreateCheckoutResponse.parse({ url: `${origin}/checkout/success?orderId=${order.id}`, orderId: order.id }),
+  if (!order) {
+    res.status(500).json({ error: "Failed to create order" });
+    return;
+  }
+
+  await db.insert(orderSeatsTable).values(
+    seats.map((seat) => ({
+      orderId: order.id,
+      seatId: seat.id,
+      priceCents: categoryById.get(seat.ticketCategoryId)?.priceCents ?? 0,
+    })),
   );
+
+  await db.update(seatsTable).set({ status: "reserved" }).where(inArray(seatsTable.id, uniqueSeatIds));
+
+  res.json(CreateCheckoutResponse.parse({ url: `${origin}/checkout/pay?orderId=${order.id}`, orderId: order.id }));
 });
+
+/** Used when a Stripe order was created but the redirect call itself failed. */
+async function createOzonQrPayment(orderId: number, seatIds: number[]): Promise<void> {
+  await db
+    .update(ordersTable)
+    .set({
+      paymentMethod: "ozon_qr",
+      expiresAt: new Date(Date.now() + QR_PAYMENT_WINDOW_MINUTES * 60 * 1000),
+    })
+    .where(eq(ordersTable.id, orderId));
+  await db.update(seatsTable).set({ status: "reserved" }).where(inArray(seatsTable.id, seatIds));
+}
 
 export default router;

@@ -153,7 +153,7 @@ export const GetSessionSeatsResponseItem = zod.object({
   "ticketCategoryId": zod.number(),
   "rowLabel": zod.string(),
   "seatNumber": zod.number(),
-  "status": zod.enum(['available', 'sold']),
+  "status": zod.enum(['available', 'reserved', 'sold']),
   "priceCents": zod.number(),
   "categoryName": zod.string()
 })
@@ -192,11 +192,13 @@ export const GetOrderParams = zod.object({
 
 export const GetOrderResponse = zod.object({
   "id": zod.number(),
-  "status": zod.enum(['pending', 'paid', 'cancelled']),
+  "status": zod.enum(['pending', 'awaiting_confirmation', 'paid', 'cancelled']),
+  "paymentMethod": zod.enum(['ozon_qr', 'stripe']),
   "totalAmountCents": zod.number(),
   "customerName": zod.string(),
   "customerEmail": zod.string(),
   "createdAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date().nullable(),
   "event": zod.object({
   "id": zod.number(),
   "title": zod.string(),
@@ -237,11 +239,13 @@ export const GetOrderResponse = zod.object({
  */
 export const GetMyOrdersResponseItem = zod.object({
   "id": zod.number(),
-  "status": zod.enum(['pending', 'paid', 'cancelled']),
+  "status": zod.enum(['pending', 'awaiting_confirmation', 'paid', 'cancelled']),
+  "paymentMethod": zod.enum(['ozon_qr', 'stripe']),
   "totalAmountCents": zod.number(),
   "customerName": zod.string(),
   "customerEmail": zod.string(),
   "createdAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date().nullable(),
   "event": zod.object({
   "id": zod.number(),
   "title": zod.string(),
@@ -297,7 +301,8 @@ export const RegisterBody = zod.object({
 export const RegisterResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
-  "name": zod.string()
+  "name": zod.string(),
+  "isAdmin": zod.boolean()
 })
 
 
@@ -316,7 +321,8 @@ export const LoginBody = zod.object({
 export const LoginResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
-  "name": zod.string()
+  "name": zod.string(),
+  "isAdmin": zod.boolean()
 })
 
 
@@ -332,8 +338,297 @@ export const LogoutResponse = zod.unknown()
 export const GetMeResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
-  "name": zod.string()
+  "name": zod.string(),
+  "isAdmin": zod.boolean()
 })
+
+
+/**
+ * Moves a pending Ozon QR order to "awaiting_confirmation" so the admin
+ * can verify the transfer and confirm it manually.
+ * @summary Customer confirms they have sent the Ozon Bank transfer
+ */
+export const MarkOrderPaidParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const MarkOrderPaidResponse = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['pending', 'awaiting_confirmation', 'paid', 'cancelled']),
+  "paymentMethod": zod.enum(['ozon_qr', 'stripe']),
+  "totalAmountCents": zod.number(),
+  "customerName": zod.string(),
+  "customerEmail": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date().nullable(),
+  "event": zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "type": zod.enum(['movie', 'theater']),
+  "posterUrl": zod.string().nullable(),
+  "genre": zod.string().nullable(),
+  "durationMinutes": zod.number().nullable(),
+  "ageRating": zod.string().nullable(),
+  "rating": zod.number().nullable(),
+  "sourceName": zod.string(),
+  "minPriceCents": zod.number().nullable()
+}),
+  "session": zod.object({
+  "id": zod.number(),
+  "eventId": zod.number(),
+  "startsAt": zod.coerce.date(),
+  "hall": zod.string().nullable(),
+  "venue": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "city": zod.string(),
+  "address": zod.string()
+}),
+  "minPriceCents": zod.number().nullable()
+}),
+  "seats": zod.array(zod.object({
+  "id": zod.number(),
+  "rowLabel": zod.string(),
+  "seatNumber": zod.number(),
+  "categoryName": zod.string(),
+  "priceCents": zod.number()
+}))
+})
+
+
+/**
+ * @summary Get the current Ozon Bank QR code and payment instructions
+ */
+export const GetPaymentSettingsResponse = zod.object({
+  "ozonQrImageUrl": zod.string().nullable(),
+  "instructions": zod.string().nullable()
+})
+
+
+/**
+ * @summary Update the Ozon Bank QR code image and instructions (admin only)
+ */
+export const UpdatePaymentSettingsBody = zod.object({
+  "ozonQrImagePath": zod.string().nullish().describe('objectPath returned from the storage upload endpoint'),
+  "instructions": zod.string().nullable()
+})
+
+export const UpdatePaymentSettingsResponse = zod.object({
+  "ozonQrImageUrl": zod.string().nullable(),
+  "instructions": zod.string().nullable()
+})
+
+
+/**
+ * @summary List orders for manual payment review (admin only)
+ */
+export const ListAdminOrdersQueryParams = zod.object({
+  "status": zod.enum(['pending', 'awaiting_confirmation', 'paid', 'cancelled', 'all']).optional().describe('Filter by order status. Defaults to pending + awaiting_confirmation.')
+})
+
+export const ListAdminOrdersResponseItem = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['pending', 'awaiting_confirmation', 'paid', 'cancelled']),
+  "paymentMethod": zod.enum(['ozon_qr', 'stripe']),
+  "totalAmountCents": zod.number(),
+  "customerName": zod.string(),
+  "customerEmail": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date().nullable(),
+  "event": zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "type": zod.enum(['movie', 'theater']),
+  "posterUrl": zod.string().nullable(),
+  "genre": zod.string().nullable(),
+  "durationMinutes": zod.number().nullable(),
+  "ageRating": zod.string().nullable(),
+  "rating": zod.number().nullable(),
+  "sourceName": zod.string(),
+  "minPriceCents": zod.number().nullable()
+}),
+  "session": zod.object({
+  "id": zod.number(),
+  "eventId": zod.number(),
+  "startsAt": zod.coerce.date(),
+  "hall": zod.string().nullable(),
+  "venue": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "city": zod.string(),
+  "address": zod.string()
+}),
+  "minPriceCents": zod.number().nullable()
+}),
+  "seats": zod.array(zod.object({
+  "id": zod.number(),
+  "rowLabel": zod.string(),
+  "seatNumber": zod.number(),
+  "categoryName": zod.string(),
+  "priceCents": zod.number()
+}))
+})
+export const ListAdminOrdersResponse = zod.array(ListAdminOrdersResponseItem)
+
+
+/**
+ * @summary Confirm a manually-verified Ozon Bank payment (admin only)
+ */
+export const ConfirmAdminOrderParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ConfirmAdminOrderResponse = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['pending', 'awaiting_confirmation', 'paid', 'cancelled']),
+  "paymentMethod": zod.enum(['ozon_qr', 'stripe']),
+  "totalAmountCents": zod.number(),
+  "customerName": zod.string(),
+  "customerEmail": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date().nullable(),
+  "event": zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "type": zod.enum(['movie', 'theater']),
+  "posterUrl": zod.string().nullable(),
+  "genre": zod.string().nullable(),
+  "durationMinutes": zod.number().nullable(),
+  "ageRating": zod.string().nullable(),
+  "rating": zod.number().nullable(),
+  "sourceName": zod.string(),
+  "minPriceCents": zod.number().nullable()
+}),
+  "session": zod.object({
+  "id": zod.number(),
+  "eventId": zod.number(),
+  "startsAt": zod.coerce.date(),
+  "hall": zod.string().nullable(),
+  "venue": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "city": zod.string(),
+  "address": zod.string()
+}),
+  "minPriceCents": zod.number().nullable()
+}),
+  "seats": zod.array(zod.object({
+  "id": zod.number(),
+  "rowLabel": zod.string(),
+  "seatNumber": zod.number(),
+  "categoryName": zod.string(),
+  "priceCents": zod.number()
+}))
+})
+
+
+/**
+ * @summary Reject/cancel an order and release its seats (admin only)
+ */
+export const RejectAdminOrderParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RejectAdminOrderResponse = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['pending', 'awaiting_confirmation', 'paid', 'cancelled']),
+  "paymentMethod": zod.enum(['ozon_qr', 'stripe']),
+  "totalAmountCents": zod.number(),
+  "customerName": zod.string(),
+  "customerEmail": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date().nullable(),
+  "event": zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "type": zod.enum(['movie', 'theater']),
+  "posterUrl": zod.string().nullable(),
+  "genre": zod.string().nullable(),
+  "durationMinutes": zod.number().nullable(),
+  "ageRating": zod.string().nullable(),
+  "rating": zod.number().nullable(),
+  "sourceName": zod.string(),
+  "minPriceCents": zod.number().nullable()
+}),
+  "session": zod.object({
+  "id": zod.number(),
+  "eventId": zod.number(),
+  "startsAt": zod.coerce.date(),
+  "hall": zod.string().nullable(),
+  "venue": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "city": zod.string(),
+  "address": zod.string()
+}),
+  "minPriceCents": zod.number().nullable()
+}),
+  "seats": zod.array(zod.object({
+  "id": zod.number(),
+  "rowLabel": zod.string(),
+  "seatNumber": zod.number(),
+  "categoryName": zod.string(),
+  "priceCents": zod.number()
+}))
+})
+
+
+/**
+ * Returns a presigned GCS URL for direct upload. The client sends JSON
+ * metadata here, then uploads the file directly to the returned URL.
+ * Admin only (currently only used for the Ozon Bank payment QR code).
+ * @summary Request a presigned URL for file upload
+ */
+
+
+
+
+
+export const RequestUploadUrlBody = zod.object({
+  "name": zod.string().min(1).describe('Original file name.'),
+  "size": zod.number().min(1).describe('File size in bytes.'),
+  "contentType": zod.string().min(1).describe('MIME type of the file (e.g. `image\/jpeg`).')
+})
+
+
+
+
+
+
+export const RequestUploadUrlResponse = zod.object({
+  "uploadURL": zod.string().describe('Presigned GCS URL for PUT upload.'),
+  "objectPath": zod.string().describe('Normalized object path (e.g. `\/objects\/uploads\/uuid`). Store this in your database.'),
+  "metadata": zod.object({
+  "name": zod.string().min(1).describe('Original file name.'),
+  "size": zod.number().min(1).describe('File size in bytes.'),
+  "contentType": zod.string().min(1).describe('MIME type of the file (e.g. `image\/jpeg`).')
+}).optional()
+})
+
+
+/**
+ * Unconditionally public — no authentication or ACL checks.
+ * Searches PUBLIC_OBJECT_SEARCH_PATHS for the given file path.
+ * @summary Serve a public asset from PUBLIC_OBJECT_SEARCH_PATHS
+ */
+export const GetPublicObjectParams = zod.object({
+  "filePath": zod.coerce.string().describe('Relative file path within the public search paths.')
+})
+
+export const GetPublicObjectResponse = zod.unknown()
+
+
+/**
+ * Serves object entities uploaded via presigned URLs. The Ozon Bank QR
+ * image is served here unconditionally (public read) since every
+ * customer at checkout needs to see it.
+ * @summary Serve an object entity from PRIVATE_OBJECT_DIR
+ */
+export const GetStorageObjectParams = zod.object({
+  "objectPath": zod.coerce.string().describe('Object path within the private object dir (e.g. `uploads\/some-uuid`).')
+})
+
+export const GetStorageObjectResponse = zod.unknown()
 
 
 /**

@@ -36,12 +36,19 @@ export function clearAuthCookie(res: Response): void {
   res.clearCookie(AUTH_COOKIE_NAME, { path: "/" });
 }
 
-export async function getUserFromRequest(req: Request): Promise<{ id: number; email: string; name: string } | null> {
+export async function getUserFromRequest(
+  req: Request,
+): Promise<{ id: number; email: string; name: string; isAdmin: boolean } | null> {
   const token = req.cookies?.[AUTH_COOKIE_NAME] as string | undefined;
   if (!token) return null;
 
   const [row] = await db
-    .select({ id: usersTable.id, email: usersTable.email, name: usersTable.name })
+    .select({
+      id: usersTable.id,
+      email: usersTable.email,
+      name: usersTable.name,
+      isAdmin: usersTable.isAdmin,
+    })
     .from(authSessionsTable)
     .innerJoin(usersTable, eq(usersTable.id, authSessionsTable.userId))
     .where(and(eq(authSessionsTable.token, token), gt(authSessionsTable.expiresAt, new Date())));
@@ -66,10 +73,25 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   next();
 }
 
+/** Rejects the request with 401/403 unless the logged-in user is an admin. */
+export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    res.status(401).json({ error: "Not authenticated" });
+    return;
+  }
+  if (!user.isAdmin) {
+    res.status(403).json({ error: "Admin access required" });
+    return;
+  }
+  req.user = user;
+  next();
+}
+
 declare global {
   namespace Express {
     interface Request {
-      user?: { id: number; email: string; name: string } | null;
+      user?: { id: number; email: string; name: string; isAdmin: boolean } | null;
     }
   }
 }

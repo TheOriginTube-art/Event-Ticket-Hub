@@ -36,7 +36,7 @@ export function SeatMap({ seats, selectedSeatIds, onToggleSeat, maxSelectable }:
                 <span className="w-4 text-[10px] text-muted-foreground text-right mr-1">{rowLabel}</span>
                 {rowSeats.map((seat) => {
                   const isSelected = selectedSeatIds.includes(seat.id);
-                  const isSold = seat.status === "sold";
+                  const isSold = seat.status === "sold" || seat.status === "reserved";
                   const isDisabled = isSold || (!isSelected && selectedSeatIds.length >= maxSelectable);
                   const categoryIndex = categoryNames.indexOf(seat.categoryName);
 
@@ -91,7 +91,7 @@ export function SeatMap({ seats, selectedSeatIds, onToggleSeat, maxSelectable }:
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-[3px] bg-white/5" />
-          Занято
+          Занято / бронь
         </div>
       </div>
     </div>

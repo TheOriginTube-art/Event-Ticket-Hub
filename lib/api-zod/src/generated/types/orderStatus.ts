@@ -6,11 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type OrderDetailStatus = typeof OrderDetailStatus[keyof typeof OrderDetailStatus];
+export type OrderStatus = typeof OrderStatus[keyof typeof OrderStatus];
 
 
-export const OrderDetailStatus = {
+export const OrderStatus = {
   pending: 'pending',
+  awaiting_confirmation: 'awaiting_confirmation',
   paid: 'paid',
   cancelled: 'cancelled',
 } as const;

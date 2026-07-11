@@ -26,6 +26,12 @@ tags:
     description: Account registration, login and session management
   - name: seats
     description: Seat maps for a session
+  - name: payment
+    description: Payment settings (Ozon Bank QR) shown to customers at checkout
+  - name: admin
+    description: Admin-only order management (manual payment confirmation)
+  - name: Storage
+    description: Object storage upload and serving endpoints.
 paths:
   /healthz:
     get:
@@ -309,6 +315,273 @@ paths:
         "401":
           description: Not authenticated
 
+  /orders/{id}/mark-paid:
+    post:
+      operationId: markOrderPaid
+      tags: [orders]
+      summary: Customer confirms they have sent the Ozon Bank transfer
+      description: |
+        Moves a pending Ozon QR order to "awaiting_confirmation" so the admin
+        can verify the transfer and confirm it manually.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Order marked as awaiting confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderDetail"
+        "400":
+          description: Order is not awaiting payment (wrong status/method or expired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Order not found
+
+  /payment-settings:
+    get:
+      operationId: getPaymentSettings
+      tags: [payment]
+      summary: Get the current Ozon Bank QR code and payment instructions
+      responses:
+        "200":
+          description: Current payment settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentSettings"
+
+  /admin/payment-settings:
+    put:
+      operationId: updatePaymentSettings
+      tags: [admin]
+      summary: Update the Ozon Bank QR code image and instructions (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePaymentSettingsInput"
+      responses:
+        "200":
+          description: Updated payment settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentSettings"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+
+  /admin/orders:
+    get:
+      operationId: listAdminOrders
+      tags: [admin]
+      summary: List orders for manual payment review (admin only)
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Filter by order status. Defaults to pending + awaiting_confirmation.
+          schema:
+            type: string
+            enum: [pending, awaiting_confirmation, paid, cancelled, all]
+      responses:
+        "200":
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrderDetail"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+
+  /admin/orders/{id}/confirm:
+    post:
+      operationId: confirmAdminOrder
+      tags: [admin]
+      summary: Confirm a manually-verified Ozon Bank payment (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Order confirmed and seats marked sold
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderDetail"
+        "400":
+          description: Order cannot be confirmed in its current status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+        "404":
+          description: Order not found
+
+  /admin/orders/{id}/reject:
+    post:
+      operationId: rejectAdminOrder
+      tags: [admin]
+      summary: Reject/cancel an order and release its seats (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Order cancelled and seats released
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderDetail"
+        "400":
+          description: Order cannot be rejected in its current status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+        "404":
+          description: Order not found
+
+  /storage/uploads/request-url:
+    post:
+      tags: [Storage]
+      operationId: requestUploadUrl
+      summary: Request a presigned URL for file upload
+      description: |
+        Returns a presigned GCS URL for direct upload. The client sends JSON
+        metadata here, then uploads the file directly to the returned URL.
+        Admin only (currently only used for the Ozon Bank payment QR code).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadUrlRequest"
+      responses:
+        "200":
+          description: Presigned upload URL generated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadUrlResponse"
+        "400":
+          description: Missing or invalid required fields.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+        "500":
+          description: Failed to generate upload URL.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /storage/public-objects/{filePath}:
+    get:
+      tags: [Storage]
+      operationId: getPublicObject
+      summary: Serve a public asset from PUBLIC_OBJECT_SEARCH_PATHS
+      description: |
+        Unconditionally public — no authentication or ACL checks.
+        Searches PUBLIC_OBJECT_SEARCH_PATHS for the given file path.
+      parameters:
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Relative file path within the public search paths.
+      responses:
+        "200":
+          description: Object content streamed with correct Content-Type.
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: File not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Failed to serve public object.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /storage/objects/{objectPath}:
+    get:
+      tags: [Storage]
+      operationId: getStorageObject
+      summary: Serve an object entity from PRIVATE_OBJECT_DIR
+      description: |
+        Serves object entities uploaded via presigned URLs. The Ozon Bank QR
+        image is served here unconditionally (public read) since every
+        customer at checkout needs to see it.
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Object path within the private object dir (e.g. `uploads/some-uuid`).
+      responses:
+        "200":
+          description: Object content streamed with correct Content-Type.
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Object not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Failed to serve object.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /home/highlights:
     get:
       operationId: getHomeHighlights
@@ -378,7 +651,7 @@ components:
 
     SeatStatus:
       type: string
-      enum: [available, sold]
+      enum: [available, reserved, sold]
 
     Seat:
       type: object
@@ -563,16 +836,26 @@ components:
         priceCents:
           type: integer
 
+    OrderStatus:
+      type: string
+      enum: [pending, awaiting_confirmation, paid, cancelled]
+
+    OrderPaymentMethod:
+      type: string
+      enum: [ozon_qr, stripe]
+
     OrderDetail:
       type: object
       required:
         [
           id,
           status,
+          paymentMethod,
           totalAmountCents,
           customerName,
           customerEmail,
           createdAt,
+          expiresAt,
           event,
           session,
           seats,
@@ -581,8 +864,9 @@ components:
         id:
           type: integer
         status:
-          type: string
-          enum: [pending, paid, cancelled]
+          $ref: "#/components/schemas/OrderStatus"
+        paymentMethod:
+          $ref: "#/components/schemas/OrderPaymentMethod"
         totalAmountCents:
           type: integer
         customerName:
@@ -591,6 +875,9 @@ components:
           type: string
         createdAt:
           type: string
+          format: date-time
+        expiresAt:
+          type: ["string", "null"]
           format: date-time
         event:
           $ref: "#/components/schemas/EventSummary"
@@ -628,13 +915,69 @@ components:
 
     AuthUser:
       type: object
-      required: [id, email, name]
+      required: [id, email, name, isAdmin]
       properties:
         id:
           type: integer
         email:
           type: string
         name:
+          type: string
+        isAdmin:
+          type: boolean
+
+    PaymentSettings:
+      type: object
+      required: [ozonQrImageUrl, instructions]
+      properties:
+        ozonQrImageUrl:
+          type: ["string", "null"]
+        instructions:
+          type: ["string", "null"]
+
+    UpdatePaymentSettingsInput:
+      type: object
+      required: [instructions]
+      properties:
+        ozonQrImagePath:
+          type: ["string", "null"]
+          description: objectPath returned from the storage upload endpoint
+        instructions:
+          type: ["string", "null"]
+
+    UploadUrlRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Original file name.
+        size:
+          type: integer
+          minimum: 1
+          description: File size in bytes.
+        contentType:
+          type: string
+          minLength: 1
+          description: MIME type of the file (e.g. `image/jpeg`).
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+          description: Presigned GCS URL for PUT upload.
+        objectPath:
+          type: string
+          description: Normalized object path (e.g. `/objects/uploads/uuid`). Store this in your database.
+        metadata:
+          $ref: "#/components/schemas/UploadUrlRequest"
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
           type: string
 
     HomeHighlights:

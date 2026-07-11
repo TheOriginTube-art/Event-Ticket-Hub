@@ -2,6 +2,7 @@ import { runMigrations } from "stripe-replit-sync";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedIfEmpty } from "./seed";
+import { seedPaymentSettingsIfEmpty } from "./lib/paymentSettingsSeed";
 import { getStripeSync } from "./stripeClient";
 
 const rawPort = process.env["PORT"];
@@ -70,6 +71,12 @@ try {
   await seedIfEmpty();
 } catch (err) {
   logger.error({ err }, "Failed to seed demo data");
+}
+
+try {
+  await seedPaymentSettingsIfEmpty();
+} catch (err) {
+  logger.error({ err }, "Failed to seed payment settings");
 }
 
 app.listen(port, (err) => {

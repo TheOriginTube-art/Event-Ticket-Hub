@@ -10,9 +10,16 @@ import {
   ticketCategoriesTable,
   venuesTable,
 } from "@workspace/db";
-import { GetOrderParams, GetOrderResponse, GetMyOrdersResponse } from "@workspace/api-zod";
+import {
+  GetOrderParams,
+  GetOrderResponse,
+  GetMyOrdersResponse,
+  MarkOrderPaidParams,
+  MarkOrderPaidResponse,
+} from "@workspace/api-zod";
 import { getEventMinPriceCents } from "../lib/eventQueries";
 import { requireAuth } from "../lib/auth";
+import { releaseExpiredOrders } from "../lib/orderExpiry";
 
 const router: IRouter = Router();
 
@@ -57,10 +64,12 @@ async function buildOrderDetail(order: typeof ordersTable.$inferSelect) {
   return {
     id: order.id,
     status: order.status,
+    paymentMethod: order.paymentMethod,
     totalAmountCents: order.totalAmountCents,
     customerName: order.customerName,
     customerEmail: order.customerEmail,
     createdAt: order.createdAt,
+    expiresAt: order.expiresAt,
     event: { ...eventRow, minPriceCents },
     session: { ...session, minPriceCents },
     seats: seatRows,
@@ -68,6 +77,8 @@ async function buildOrderDetail(order: typeof ordersTable.$inferSelect) {
 }
 
 router.get("/orders/mine", requireAuth, async (req, res): Promise<void> => {
+  await releaseExpiredOrders();
+
   const rows = await db
     .select()
     .from(ordersTable)
@@ -85,6 +96,8 @@ router.get("/orders/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  await releaseExpiredOrders();
+
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id));
   if (!order) {
     res.status(404).json({ error: "Order not found" });
@@ -98,6 +111,41 @@ router.get("/orders/:id", async (req, res): Promise<void> => {
   }
 
   res.json(GetOrderResponse.parse(detail));
+});
+
+router.post("/orders/:id/mark-paid", async (req, res): Promise<void> => {
+  const params = MarkOrderPaidParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  await releaseExpiredOrders();
+
+  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id));
+  if (!order) {
+    res.status(404).json({ error: "Order not found" });
+    return;
+  }
+
+  if (order.paymentMethod !== "ozon_qr" || order.status !== "pending") {
+    res.status(400).json({ error: "Заказ не ожидает оплату по QR-коду" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(ordersTable)
+    .set({ status: "awaiting_confirmation" })
+    .where(eq(ordersTable.id, order.id))
+    .returning();
+
+  const detail = await buildOrderDetail(updated!);
+  if (!detail) {
+    res.status(404).json({ error: "Order details incomplete" });
+    return;
+  }
+
+  res.json(MarkOrderPaidResponse.parse(detail));
 });
 
 export default router;

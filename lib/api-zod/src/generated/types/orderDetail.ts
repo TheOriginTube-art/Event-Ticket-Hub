@@ -6,17 +6,21 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { EventSummary } from './eventSummary';
-import type { OrderDetailStatus } from './orderDetailStatus';
+import type { OrderPaymentMethod } from './orderPaymentMethod';
 import type { OrderSeat } from './orderSeat';
+import type { OrderStatus } from './orderStatus';
 import type { SessionSummary } from './sessionSummary';
 
 export interface OrderDetail {
   id: number;
-  status: OrderDetailStatus;
+  status: OrderStatus;
+  paymentMethod: OrderPaymentMethod;
   totalAmountCents: number;
   customerName: string;
   customerEmail: string;
   createdAt: Date;
+  /** @nullable */
+  expiresAt: Date | null;
   event: EventSummary;
   session: SessionSummary;
   seats: OrderSeat[];

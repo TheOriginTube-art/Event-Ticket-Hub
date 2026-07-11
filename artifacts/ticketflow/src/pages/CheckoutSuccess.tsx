@@ -22,11 +22,19 @@ export default function CheckoutSuccess() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Poll if order is pending
+  // Ozon QR orders are not paid yet when landing here (Stripe redirects here
+  // only after real payment) -- send them to the QR payment page instead.
+  useEffect(() => {
+    if (order && order.paymentMethod === "ozon_qr" && order.status !== "paid") {
+      window.location.href = `${import.meta.env.BASE_URL}checkout/pay?orderId=${order.id}`;
+    }
+  }, [order]);
+
+  // Poll if the Stripe order is still pending (webhook/redirect race).
   useEffect(() => {
     let interval: NodeJS.Timeout;
 
-    if (order?.status === 'pending') {
+    if (order?.status === 'pending' && order.paymentMethod === 'stripe') {
       setIsPolling(true);
       interval = setInterval(() => {
         refetch();
@@ -38,7 +46,7 @@ export default function CheckoutSuccess() {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [order?.status, refetch]);
+  }, [order?.status, order?.paymentMethod, refetch]);
 
   useEffect(() => {
     if (!order || order.status !== 'paid') return;

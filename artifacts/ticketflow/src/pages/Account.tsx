@@ -80,7 +80,13 @@ export default function Account() {
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm text-primary font-medium">Заказ #{order.id}</span>
                     <Badge variant={order.status === "paid" ? "cinema" : "outline"}>
-                      {order.status === "paid" ? "Оплачен" : order.status === "cancelled" ? "Отменен" : "В обработке"}
+                      {order.status === "paid"
+                        ? "Оплачен"
+                        : order.status === "cancelled"
+                          ? "Отменен"
+                          : order.status === "awaiting_confirmation"
+                            ? "Ожидает подтверждения"
+                            : "Ожидает оплаты"}
                     </Badge>
                   </div>
                   <h3 className="font-bold text-lg">{order.event.title}</h3>
