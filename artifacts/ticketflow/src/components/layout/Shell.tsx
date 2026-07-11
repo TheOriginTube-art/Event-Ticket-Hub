@@ -1,7 +1,33 @@
 import { Link, useLocation } from "wouter";
-import { Ticket, Search } from "lucide-react";
+import { Ticket, Search, MapPin, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useHealthCheck } from "@workspace/api-client-react";
+import { useHealthCheck, useListCities } from "@workspace/api-client-react";
+import { useCity } from "@/lib/city-context";
+
+function CitySelector() {
+  const { city, setCity } = useCity();
+  const { data: cities } = useListCities();
+
+  return (
+    <div className="relative">
+      <MapPin className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+      <select
+        aria-label="Выбор города"
+        value={city}
+        onChange={(e) => setCity(e.target.value)}
+        className="h-9 rounded-full border border-white/10 bg-white/5 pl-8 pr-7 text-sm font-medium text-foreground appearance-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary hover:border-white/20 transition-colors"
+      >
+        <option value="">Все города</option>
+        {cities?.map((c) => (
+          <option key={c} value={c}>
+            {c}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -31,6 +57,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </nav>
           
           <div className="flex items-center gap-3">
+            <div className="hidden sm:block">
+              <CitySelector />
+            </div>
             <Link href="/events">
               <Button variant="ghost" size="icon" className="rounded-full">
                 <Search className="w-5 h-5" />

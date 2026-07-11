@@ -198,6 +198,12 @@ paths:
       operationId: getHomeHighlights
       tags: [home]
       summary: Featured events and quick stats for the home page
+      parameters:
+        - name: city
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Home highlights

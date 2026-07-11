@@ -217,6 +217,10 @@ export const GetOrderResponse = zod.object({
 /**
  * @summary Featured events and quick stats for the home page
  */
+export const GetHomeHighlightsQueryParams = zod.object({
+  "city": zod.coerce.string().optional()
+})
+
 export const GetHomeHighlightsResponse = zod.object({
   "featuredEvents": zod.array(zod.object({
   "id": zod.number(),

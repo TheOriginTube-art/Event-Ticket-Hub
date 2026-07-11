@@ -1,11 +1,21 @@
 import { Router, type IRouter } from "express";
-import { desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, sql, type SQL } from "drizzle-orm";
 import { db, eventsTable, sessionsTable, ticketCategoriesTable, venuesTable } from "@workspace/db";
-import { GetHomeHighlightsResponse } from "@workspace/api-zod";
+import { GetHomeHighlightsQueryParams, GetHomeHighlightsResponse } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
-router.get("/home/highlights", async (_req, res): Promise<void> => {
+router.get("/home/highlights", async (req, res): Promise<void> => {
+  const params = GetHomeHighlightsQueryParams.safeParse(req.query);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const { city } = params.data;
+
+  const conditions: SQL[] = [];
+  if (city) conditions.push(eq(venuesTable.city, city));
+
   const featuredEvents = await db
     .select({
       id: eventsTable.id,
@@ -21,7 +31,9 @@ router.get("/home/highlights", async (_req, res): Promise<void> => {
     })
     .from(eventsTable)
     .leftJoin(sessionsTable, eq(sessionsTable.eventId, eventsTable.id))
+    .leftJoin(venuesTable, eq(venuesTable.id, sessionsTable.venueId))
     .leftJoin(ticketCategoriesTable, eq(ticketCategoriesTable.sessionId, sessionsTable.id))
+    .where(conditions.length ? and(...conditions) : undefined)
     .groupBy(eventsTable.id)
     .orderBy(desc(eventsTable.rating))
     .limit(6);

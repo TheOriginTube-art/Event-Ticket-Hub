@@ -11,6 +11,7 @@ export * from './checkoutResult';
 export * from './eventDetail';
 export * from './eventSummary';
 export * from './eventType';
+export * from './getHomeHighlightsParams';
 export * from './healthStatus';
 export * from './homeHighlights';
 export * from './listEventsParams';

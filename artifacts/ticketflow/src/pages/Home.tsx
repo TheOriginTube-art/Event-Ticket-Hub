@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRubles } from "@/lib/utils";
+import { useCity } from "@/lib/city-context";
 
 export default function Home() {
-  const { data: highlights, isLoading } = useGetHomeHighlights();
+  const { city } = useCity();
+  const { data: highlights, isLoading } = useGetHomeHighlights(city ? { city } : undefined);
 
   return (
     <div className="flex flex-col">

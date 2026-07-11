@@ -7,16 +7,30 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRubles } from "@/lib/utils";
+import { useCity } from "@/lib/city-context";
 
 export default function Events() {
   const [location, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
+  const { city: globalCity, setCity: setGlobalCity } = useCity();
   
-  const typeParam = searchParams.get("type") as "movie" | "theater" | undefined;
+  const typeParam = (searchParams.get("type") ?? undefined) as "movie" | "theater" | undefined;
   const [type, setType] = useState<"movie" | "theater" | undefined>(typeParam);
   const [search, setSearch] = useState(searchParams.get("search") || "");
-  const [city, setCity] = useState(searchParams.get("city") || "");
   const [debouncedSearch, setDebouncedSearch] = useState(search);
+
+  // The city filter on this page and the header's global city selector share
+  // the same state, so picking a city in either place stays in sync.
+  const urlCity = searchParams.get("city");
+  const [hydratedFromUrl, setHydratedFromUrl] = useState(false);
+  useEffect(() => {
+    if (!hydratedFromUrl && urlCity) {
+      setGlobalCity(urlCity);
+    }
+    setHydratedFromUrl(true);
+  }, []);
+  const city = globalCity;
+  const setCity = setGlobalCity;
 
   // Simple debounce for search
   useEffect(() => {

@@ -161,3 +161,7 @@ city?: string;
 search?: string;
 };
 
+export type GetHomeHighlightsParams = {
+city?: string;
+};
+

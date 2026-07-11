@@ -24,6 +24,7 @@ import type {
   CheckoutResult,
   EventDetail,
   EventSummary,
+  GetHomeHighlightsParams,
   HealthStatus,
   HomeHighlights,
   ListEventsParams,
@@ -685,20 +686,27 @@ export function useGetOrder<TData = Awaited<ReturnType<typeof getOrder>>, TError
 
 
 
-export const getGetHomeHighlightsUrl = () => {
+export const getGetHomeHighlightsUrl = (params?: GetHomeHighlightsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/home/highlights`
+  return stringifiedParams.length > 0 ? `/api/home/highlights?${stringifiedParams}` : `/api/home/highlights`
 }
 
 /**
  * @summary Featured events and quick stats for the home page
  */
-export const getHomeHighlights = async ( options?: RequestInit): Promise<HomeHighlights> => {
+export const getHomeHighlights = async (params?: GetHomeHighlightsParams, options?: RequestInit): Promise<HomeHighlights> => {
 
-  return customFetch<HomeHighlights>(getGetHomeHighlightsUrl(),
+  return customFetch<HomeHighlights>(getGetHomeHighlightsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -711,23 +719,23 @@ export const getHomeHighlights = async ( options?: RequestInit): Promise<HomeHig
 
 
 
-export const getGetHomeHighlightsQueryKey = () => {
+export const getGetHomeHighlightsQueryKey = (params?: GetHomeHighlightsParams,) => {
     return [
-    `/api/home/highlights`
+    `/api/home/highlights`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetHomeHighlightsQueryOptions = <TData = Awaited<ReturnType<typeof getHomeHighlights>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHomeHighlights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetHomeHighlightsQueryOptions = <TData = Awaited<ReturnType<typeof getHomeHighlights>>, TError = ErrorType<unknown>>(params?: GetHomeHighlightsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHomeHighlights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetHomeHighlightsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetHomeHighlightsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHomeHighlights>>> = ({ signal }) => getHomeHighlights({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHomeHighlights>>> = ({ signal }) => getHomeHighlights(params, { signal, ...requestOptions });
 
 
 
@@ -745,11 +753,11 @@ export type GetHomeHighlightsQueryError = ErrorType<unknown>
  */
 
 export function useGetHomeHighlights<TData = Awaited<ReturnType<typeof getHomeHighlights>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHomeHighlights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetHomeHighlightsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHomeHighlights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetHomeHighlightsQueryOptions(options)
+  const queryOptions = getGetHomeHighlightsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
