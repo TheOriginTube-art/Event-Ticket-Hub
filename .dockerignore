@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/.turbo
+.git
+.local
+.agents
+screenshots
+/tmp

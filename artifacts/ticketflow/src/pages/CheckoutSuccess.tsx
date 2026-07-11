@@ -1,4 +1,4 @@
-import { useGetOrder } from "@workspace/api-client-react";
+import { useGetOrder, getGetOrderQueryKey } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 import { CheckCircle2, Ticket, Calendar, MapPin, Loader2, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ export default function CheckoutSuccess() {
   
   const { data: order, isLoading, refetch } = useGetOrder(orderId, {
     query: {
+      queryKey: getGetOrderQueryKey(orderId),
       enabled: !!orderId,
     }
   });

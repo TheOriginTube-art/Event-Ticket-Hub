@@ -30,9 +30,13 @@ async function initStripe(): Promise<void> {
 
   const stripeSync = await getStripeSync();
 
-  const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
-  if (domain) {
-    const webhookBaseUrl = `https://${domain}`;
+  // On Replit, the public domain is injected automatically. On a self-hosted
+  // VDS, set PUBLIC_BASE_URL (e.g. https://example.com) so the webhook can
+  // still be registered automatically.
+  const webhookBaseUrl =
+    process.env.PUBLIC_BASE_URL ??
+    (process.env.REPLIT_DOMAINS ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}` : undefined);
+  if (webhookBaseUrl) {
     logger.info("Setting up managed Stripe webhook...");
     const webhookResult = await stripeSync.findOrCreateManagedWebhook(
       `${webhookBaseUrl}/api/stripe/webhook`,

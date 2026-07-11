@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useListEvents, useListCities } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
 import { Search, Film, Theater, Star, MapPin, SlidersHorizontal } from "lucide-react";
@@ -19,7 +19,7 @@ export default function Events() {
   const [debouncedSearch, setDebouncedSearch] = useState(search);
 
   // Simple debounce for search
-  React.useEffect(() => {
+  useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 500);
     return () => clearTimeout(timer);
   }, [search]);

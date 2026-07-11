@@ -2,10 +2,23 @@ import Stripe from "stripe";
 import { StripeSync } from "stripe-replit-sync";
 
 /**
- * Fetches Stripe credentials from the Replit connection API.
- * Not cached -- tokens can rotate, so fetch fresh each time.
+ * Fetches Stripe credentials.
+ *
+ * On Replit, credentials come from the managed connector (rotated tokens,
+ * fetched fresh on every call). Outside Replit (e.g. a self-hosted VDS),
+ * there is no connector -- credentials are read directly from plain
+ * environment variables (`STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`)
+ * instead.
  */
 export async function getStripeCredentials(): Promise<{ secretKey: string; webhookSecret?: string }> {
+  const plainSecretKey = process.env.STRIPE_SECRET_KEY;
+  if (plainSecretKey) {
+    return {
+      secretKey: plainSecretKey,
+      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+    };
+  }
+
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY
     ? "repl " + process.env.REPL_IDENTITY
@@ -15,7 +28,8 @@ export async function getStripeCredentials(): Promise<{ secretKey: string; webho
 
   if (!hostname || !xReplitToken) {
     throw new Error(
-      "Missing Replit environment variables. Ensure the Stripe integration is connected via the Integrations tab.",
+      "No Stripe credentials found. Set STRIPE_SECRET_KEY (and optionally STRIPE_WEBHOOK_SECRET) " +
+        "as environment variables, or connect the Stripe integration via the Integrations tab on Replit.",
     );
   }
 

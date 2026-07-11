@@ -7,6 +7,10 @@ import { WebhookHandlers } from "./webhookHandlers";
 
 const app: Express = express();
 
+// Trust the reverse proxy (nginx on a self-hosted VDS, or Replit's own proxy)
+// so req.protocol reflects X-Forwarded-Proto instead of always reporting "http".
+app.set("trust proxy", true);
+
 app.use(
   pinoHttp({
     logger,
