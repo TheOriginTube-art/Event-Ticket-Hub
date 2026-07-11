@@ -28,6 +28,7 @@ router.get("/home/highlights", async (req, res): Promise<void> => {
       rating: eventsTable.rating,
       sourceName: eventsTable.sourceName,
       minPriceCents: sql<number | null>`min(${ticketCategoriesTable.priceCents})`,
+      cities: sql<string[]>`coalesce(array_agg(distinct ${venuesTable.city}) filter (where ${venuesTable.city} is not null), '{}')`,
     })
     .from(eventsTable)
     .leftJoin(sessionsTable, eq(sessionsTable.eventId, eventsTable.id))
