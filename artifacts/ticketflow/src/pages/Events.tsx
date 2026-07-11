@@ -109,12 +109,13 @@ export default function Events() {
               <label className="text-sm font-medium text-muted-foreground">Город</label>
               <select 
                 className="flex h-11 w-full rounded-lg border border-white/10 bg-background/50 px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary appearance-none"
+                style={{ colorScheme: "dark" }}
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
               >
-                <option value="">Любой город</option>
+                <option value="" className="bg-[#101014] text-white">Любой город</option>
                 {RUSSIAN_CITIES.map(c => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c} value={c} className="bg-[#101014] text-white">{c}</option>
                 ))}
               </select>
             </div>

@@ -16,11 +16,14 @@ function CitySelector() {
         aria-label="Выбор города"
         value={city}
         onChange={(e) => setCity(e.target.value)}
+        style={{ colorScheme: "dark" }}
         className="h-9 rounded-full border border-white/10 bg-white/5 pl-8 pr-7 text-sm font-medium text-foreground appearance-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary hover:border-white/20 transition-colors"
       >
-        <option value="">Все города</option>
+        <option value="" className="bg-[#101014] text-white">
+          Все города
+        </option>
         {RUSSIAN_CITIES.map((c) => (
-          <option key={c} value={c}>
+          <option key={c} value={c} className="bg-[#101014] text-white">
             {c}
           </option>
         ))}
