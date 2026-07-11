@@ -207,8 +207,16 @@ export async function seedIfEmpty(): Promise<void> {
     return;
   }
 
-  logger.info("Seeding demo venues, events and Stripe products/prices...");
-  const stripe = await getUncachableStripeClient();
+  let stripe: Awaited<ReturnType<typeof getUncachableStripeClient>> | null = null;
+  try {
+    stripe = await getUncachableStripeClient();
+    logger.info("Seeding demo venues, events and Stripe products/prices...");
+  } catch (err) {
+    logger.warn(
+      { err },
+      "Stripe is not connected yet -- seeding demo data without Stripe products/prices. Checkout will be unavailable until Stripe is connected and the data is re-seeded.",
+    );
+  }
 
   const venueIdByName = new Map<string, number>();
   for (const v of venueDefs) {
@@ -217,10 +225,12 @@ export async function seedIfEmpty(): Promise<void> {
   }
 
   for (const evt of eventDefs) {
-    const product = await stripe.products.create({
-      name: evt.title,
-      description: evt.description,
-    });
+    const product = stripe
+      ? await stripe.products.create({
+          name: evt.title,
+          description: evt.description,
+        })
+      : null;
 
     const [eventRow] = await db
       .insert(eventsTable)
@@ -234,7 +244,7 @@ export async function seedIfEmpty(): Promise<void> {
         ageRating: evt.ageRating,
         rating: evt.rating,
         sourceName: evt.sourceName,
-        stripeProductId: product.id,
+        stripeProductId: product?.id,
       })
       .returning();
 
@@ -243,14 +253,16 @@ export async function seedIfEmpty(): Promise<void> {
     }
 
     const priceIdByTier = new Map<string, string>();
-    for (const tier of evt.priceTiers) {
-      const price = await stripe.prices.create({
-        product: product.id,
-        unit_amount: tier.priceCents,
-        currency: "rub",
-        nickname: tier.name,
-      });
-      priceIdByTier.set(tier.name, price.id);
+    if (stripe && product) {
+      for (const tier of evt.priceTiers) {
+        const price = await stripe.prices.create({
+          product: product.id,
+          unit_amount: tier.priceCents,
+          currency: "rub",
+          nickname: tier.name,
+        });
+        priceIdByTier.set(tier.name, price.id);
+      }
     }
 
     for (const sess of evt.sessions) {

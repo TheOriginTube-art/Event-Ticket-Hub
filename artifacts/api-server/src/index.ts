@@ -49,11 +49,24 @@ async function initStripe(): Promise<void> {
     .catch((err: unknown) => {
       logger.error({ err }, "Error syncing Stripe data");
     });
-
-  await seedIfEmpty();
 }
 
-await initStripe();
+// Stripe isn't connected yet -- don't let that block the server from starting.
+// Real checkout will simply be unavailable until the integration is connected.
+try {
+  await initStripe();
+} catch (err) {
+  logger.warn(
+    { err },
+    "Stripe is not connected yet -- skipping Stripe setup. Real checkout will be unavailable until it's connected.",
+  );
+}
+
+try {
+  await seedIfEmpty();
+} catch (err) {
+  logger.error({ err }, "Failed to seed demo data");
+}
 
 app.listen(port, (err) => {
   if (err) {
