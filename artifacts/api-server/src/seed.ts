@@ -677,7 +677,7 @@ const additionalEventDefs: EventDef[] = [
     type: "movie",
     description:
       "Дерзкая, абсурдная и в то же время удивительно правдивая история о том, как миньоны покорили Голливуд, стали кинозвёздами, потеряли всё, выпустили монстров на свободу — и в конце концов были вынуждены объединиться, чтобы спасти планету от хаоса.",
-    posterUrl: "https://www.impawards.com/2026/posters/minions_three.jpg",
+    posterUrl: "https://www.assignmentx.com/wp-content/uploads/2026/06/MM_1Sheet1_IrenePool_RGB_2SM.jpg",
     genre: "Мультфильм",
     durationMinutes: 90,
     ageRating: "6+",
@@ -694,7 +694,7 @@ const additionalEventDefs: EventDef[] = [
     type: "movie",
     description:
       "Детектив Энола Холмс оказывается на Мальте, где ей предстоит сложное и опасное расследование.",
-    posterUrl: "https://www.impawards.com/2026/posters/enola_holmes_three.jpg",
+    posterUrl: "https://media-cache.cinematerial.com/p/500x/u2xfnish/enola-holmes-3-movie-poster.jpg",
     genre: "Детектив",
     durationMinutes: 105,
     ageRating: "12+",

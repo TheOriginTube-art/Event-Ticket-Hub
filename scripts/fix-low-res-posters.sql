@@ -11,5 +11,5 @@ UPDATE events SET poster_url = 'https://static.kinoafisha.info/k/movie_posters/4
 UPDATE events SET poster_url = 'https://static.kinoafisha.info/k/movie_posters/400/upload/movie_posters/6/4/9/8384946/574544069493.jpg' WHERE title = 'Пасть';
 UPDATE events SET poster_url = 'https://resizer.mail.ru/p/a17279b0-a7a9-5deb-8e7a-6c2338876ec5/AQACE-cwLTdrlWVQ3K7srfehhk0xPN9rzmD8vBcEDWQEyuI-wM_7rxHkZ7GpjH_8ulTVSYZYaXyaKpXBf0ADBkxWEdM.jpg' WHERE title = 'Иллюзия убийства';
 UPDATE events SET poster_url = 'https://www.gazmanov-bilet.ru/images/upload/gazmanov-1.jpeg' WHERE title = 'Олег Газманов';
-UPDATE events SET poster_url = 'https://www.impawards.com/2026/posters/minions_three.jpg' WHERE title = 'Миньоны и Монстры';
-UPDATE events SET poster_url = 'https://www.impawards.com/2026/posters/enola_holmes_three.jpg' WHERE title = 'Энола Холмс 3';
+UPDATE events SET poster_url = 'https://www.assignmentx.com/wp-content/uploads/2026/06/MM_1Sheet1_IrenePool_RGB_2SM.jpg' WHERE title = 'Миньоны и Монстры';
+UPDATE events SET poster_url = 'https://media-cache.cinematerial.com/p/500x/u2xfnish/enola-holmes-3-movie-poster.jpg' WHERE title = 'Энола Холмс 3';
