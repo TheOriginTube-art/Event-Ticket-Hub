@@ -1,10 +1,38 @@
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useRoute } from "wouter";
 import { Ticket, Search, MapPin, ChevronDown, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useHealthCheck } from "@workspace/api-client-react";
+import { useHealthCheck, useGetEvent, getGetEventQueryKey } from "@workspace/api-client-react";
 import { useCity } from "@/lib/city-context";
 import { RUSSIAN_CITIES } from "@/lib/russian-cities";
 import { useAuth } from "@/lib/auth-context";
+
+const SUPPORT_EMAIL = "ticketflowhelp@gmail.com";
+
+function buildMailtoUrl(subject: string, body: string): string {
+  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+/** Refund request mailto link. Pre-fills the event title when the user is currently viewing an event page. */
+function useRefundMailto(): string {
+  const [isEventPage, params] = useRoute("/events/:id");
+  const eventId = isEventPage ? Number(params?.id) : NaN;
+  const { data: event } = useGetEvent(eventId, {
+    query: { queryKey: getGetEventQueryKey(eventId), enabled: isEventPage && !Number.isNaN(eventId) },
+  });
+
+  const subject = "Возврат билета";
+  const body =
+    isEventPage && event
+      ? `Здравствуйте!\n\nПрошу оформить возврат билета на мероприятие «${event.title}».\n\nЕ-mail, указанный при заказе:\nНомер заказа (если известен):\nПричина возврата:\n`
+      : `Здравствуйте!\n\nПрошу оформить возврат билета на мероприятие:\n\nЕ-mail, указанный при заказе:\nНомер заказа (если известен):\nПричина возврата:\n`;
+
+  return buildMailtoUrl(subject, body);
+}
+
+const HELP_MAILTO = buildMailtoUrl(
+  "Вопрос в поддержку TicketFlow",
+  "Здравствуйте!\n\nОпишите, пожалуйста, ваш вопрос:\n",
+);
 
 function CitySelector() {
   const { city, setCity } = useCity();
@@ -30,6 +58,15 @@ function CitySelector() {
         ))}
       </select>
     </div>
+  );
+}
+
+function RefundLink() {
+  const mailto = useRefundMailto();
+  return (
+    <a href={mailto} className="cursor-pointer hover:text-primary transition-colors">
+      Возврат билетов
+    </a>
   );
 }
 
@@ -123,8 +160,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <div>
             <h3 className="font-semibold mb-4">Поддержка</h3>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><span className="cursor-pointer hover:text-primary transition-colors">Помощь</span></li>
-              <li><span className="cursor-pointer hover:text-primary transition-colors">Возврат билетов</span></li>
+              <li><a href={HELP_MAILTO} className="cursor-pointer hover:text-primary transition-colors">Помощь</a></li>
+              <li><RefundLink /></li>
               <li><span className="cursor-pointer hover:text-primary transition-colors">Правила сервиса</span></li>
             </ul>
           </div>

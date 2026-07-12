@@ -126,7 +126,7 @@ router.get("/sessions/:id", async (req, res): Promise<void> => {
     GetSessionResponse.parse({
       ...session,
       ticketCategories,
-      event: { ...eventRow, minPriceCents },
+      event: { ...eventRow, minPriceCents, cities: [session.venue.city] },
     }),
   );
 });

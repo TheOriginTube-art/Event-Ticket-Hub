@@ -70,7 +70,7 @@ async function buildOrderDetail(order: typeof ordersTable.$inferSelect) {
     customerEmail: order.customerEmail,
     createdAt: order.createdAt,
     expiresAt: order.expiresAt,
-    event: { ...eventRow, minPriceCents },
+    event: { ...eventRow, minPriceCents, cities: [session.venue.city] },
     session: { ...session, minPriceCents },
     seats: seatRows,
   };
