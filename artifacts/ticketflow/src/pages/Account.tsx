@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatRubles, formatDate, formatTime } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { useSeo } from "@/lib/seo";
 
 export default function Account() {
   const [, setLocation] = useLocation();
@@ -13,6 +14,8 @@ export default function Account() {
   const { data: orders, isLoading: isOrdersLoading } = useGetMyOrders({
     query: { queryKey: getGetMyOrdersQueryKey(), enabled: !!user },
   });
+
+  useSeo({ title: "Личный кабинет", description: "Ваши билеты и история заказов на TicketFlow.", noindex: true });
 
   useEffect(() => {
     if (!isAuthLoading && !user) {

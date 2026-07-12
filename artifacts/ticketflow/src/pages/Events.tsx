@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatRubles } from "@/lib/utils";
 import { useCity } from "@/lib/city-context";
 import { EVENT_TYPE_BADGE_VARIANT, EVENT_TYPE_LABELS } from "@/lib/event-types";
+import { useSeo } from "@/lib/seo";
 
 const SORT_OPTIONS: { value: EventSortOrder | ""; label: string }[] = [
   { value: "", label: "По умолчанию" },
@@ -63,6 +64,17 @@ export default function Events() {
     else params.delete("type");
     setLocation(`/events?${params.toString()}`, { replace: true });
   };
+
+  const seoTitle = type === "movie" ? "Кино" : type === "theater" ? "Театр" : type === "concert" ? "Концерты" : "Афиша";
+  const seoDescription =
+    type === "movie"
+      ? "Расписание сеансов в кино и билеты на премьеры."
+      : type === "theater"
+        ? "Спектакли, балет и опера — билеты в лучшие театры."
+        : type === "concert"
+          ? "Билеты на концерты популярных исполнителей."
+          : "Билеты на лучшие события в городе: кино, театр и концерты.";
+  useSeo({ title: seoTitle, description: seoDescription });
 
   return (
     <div className="container mx-auto px-4 py-8">

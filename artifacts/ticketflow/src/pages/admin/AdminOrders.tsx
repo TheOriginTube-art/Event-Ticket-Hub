@@ -14,6 +14,7 @@ import { formatRubles, formatDate, formatTime } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSeo } from "@/lib/seo";
 
 const STATUS_TABS: { value: NonNullable<ListAdminOrdersParams["status"]>; label: string }[] = [
   { value: "awaiting_confirmation", label: "Ждут подтверждения" },
@@ -27,6 +28,8 @@ export default function AdminOrders() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const [status, setStatus] = useState<NonNullable<ListAdminOrdersParams["status"]>>("awaiting_confirmation");
   const queryClient = useQueryClient();
+
+  useSeo({ title: "Админ: заказы", description: "Управление заказами TicketFlow.", noindex: true });
 
   const { data: orders, isLoading } = useListAdminOrders(
     { status },

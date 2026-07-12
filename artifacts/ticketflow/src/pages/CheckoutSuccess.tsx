@@ -6,10 +6,13 @@ import { Link } from "wouter";
 import { formatRubles, formatDate, formatTime } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
+import { useSeo } from "@/lib/seo";
 
 export default function CheckoutSuccess() {
   const searchParams = new URLSearchParams(window.location.search);
   const orderId = Number(searchParams.get("orderId"));
+
+  useSeo({ title: "Билеты куплены", description: "Ваши билеты успешно куплены.", noindex: true });
 
   const { data: order, isLoading, refetch } = useGetOrder(orderId, {
     query: {

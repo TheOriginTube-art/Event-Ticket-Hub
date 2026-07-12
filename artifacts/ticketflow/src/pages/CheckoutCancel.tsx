@@ -1,10 +1,13 @@
 import { Link } from "wouter";
 import { XCircle, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useSeo } from "@/lib/seo";
 
 export default function CheckoutCancel() {
   const searchParams = new URLSearchParams(window.location.search);
   const eventId = searchParams.get("eventId");
+
+  useSeo({ title: "Оплата отменена", description: "Оплата заказа была отменена.", noindex: true });
 
   return (
     <div className="container mx-auto px-4 py-24 flex flex-col items-center justify-center text-center">

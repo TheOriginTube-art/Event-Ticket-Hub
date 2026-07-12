@@ -4,6 +4,7 @@ import { UserPlus, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth-context";
+import { useSeo } from "@/lib/seo";
 
 export default function Register() {
   const [, setLocation] = useLocation();
@@ -11,6 +12,8 @@ export default function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  useSeo({ title: "Регистрация", description: "Создайте аккаунт TicketFlow, чтобы покупать билеты быстрее.", noindex: true });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

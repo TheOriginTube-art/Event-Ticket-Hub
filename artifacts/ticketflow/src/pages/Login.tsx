@@ -4,12 +4,15 @@ import { LogIn, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth-context";
+import { useSeo } from "@/lib/seo";
 
 export default function Login() {
   const [, setLocation] = useLocation();
   const { login, loginError, isAuthenticating } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  useSeo({ title: "Вход", description: "Войдите в свой аккаунт TicketFlow.", noindex: true });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

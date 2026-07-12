@@ -13,11 +13,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { useSeo } from "@/lib/seo";
 
 export default function AdminSettings() {
   const [, setLocation] = useLocation();
   const { user, isLoading: isAuthLoading } = useAuth();
   const queryClient = useQueryClient();
+
+  useSeo({ title: "Настройки оплаты", description: "Настройки способов оплаты TicketFlow.", noindex: true });
 
   const { data: settings, isLoading } = useGetPaymentSettings({
     query: { queryKey: getGetPaymentSettingsQueryKey(), enabled: !!user?.isAdmin },

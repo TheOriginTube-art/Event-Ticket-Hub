@@ -12,12 +12,26 @@ import { SeatMap } from "@/components/SeatMap";
 import { useAuth } from "@/lib/auth-context";
 import { useCity } from "@/lib/city-context";
 import { EVENT_TYPE_BADGE_VARIANT, EVENT_TYPE_LABELS } from "@/lib/event-types";
+import { useSeo } from "@/lib/seo";
 
 export default function EventDetail() {
   const { id } = useParams();
   const eventId = Number(id);
   
   const { data: event, isLoading: isEventLoading } = useGetEvent(eventId);
+
+  useSeo(
+    event
+      ? {
+          title: event.title,
+          description:
+            event.description?.slice(0, 200) ||
+            `${EVENT_TYPE_LABELS[event.type]}${event.genre ? ` • ${event.genre}` : ""} — билеты на TicketFlow.`,
+          image: event.posterUrl ?? undefined,
+          type: "website",
+        }
+      : { title: "Загрузка..." },
+  );
   
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
 

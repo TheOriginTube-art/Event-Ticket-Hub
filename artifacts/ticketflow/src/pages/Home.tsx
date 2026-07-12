@@ -7,10 +7,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatRubles } from "@/lib/utils";
 import { useCity } from "@/lib/city-context";
 import { EVENT_TYPE_BADGE_VARIANT, EVENT_TYPE_LABELS } from "@/lib/event-types";
+import { useSeo } from "@/lib/seo";
 
 export default function Home() {
   const { city } = useCity();
   const { data: highlights, isLoading } = useGetHomeHighlights(city ? { city } : undefined);
+
+  useSeo({
+    description:
+      "Афиша кино, театра и концертов в одном месте. Выбирайте места на карте зала и покупайте билеты онлайн без наценок.",
+  });
 
   return (
     <div className="flex flex-col">

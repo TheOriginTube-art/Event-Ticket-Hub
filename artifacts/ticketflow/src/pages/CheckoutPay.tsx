@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { formatRubles } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSeo } from "@/lib/seo";
 
 function useCountdown(expiresAt: string | null | undefined) {
   const [now, setNow] = useState(() => Date.now());
@@ -35,6 +36,8 @@ export default function CheckoutPay() {
   const searchParams = new URLSearchParams(window.location.search);
   const orderId = Number(searchParams.get("orderId"));
   const queryClient = useQueryClient();
+
+  useSeo({ title: "Оплата заказа", description: "Оплата заказа по QR-коду.", noindex: true });
 
   const { data: order, isLoading, refetch } = useGetOrder(orderId, {
     query: { queryKey: getGetOrderQueryKey(orderId), enabled: !!orderId },
