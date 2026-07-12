@@ -82,7 +82,7 @@ const eventDefs: EventDef[] = [
     type: "movie",
     description:
       "Эпическая научная фантастика о зарождении ордена Бене Гессерит за десять тысяч лет до событий Пола Атрейдеса.",
-    posterUrl: "https://static.kinoafisha.info/k/series_posters/220/upload/series/posters/9/2/3/4329/699231631128.jpg",
+    posterUrl: "https://static.kinoafisha.info/k/series_posters/400/upload/series/posters/9/2/3/4329/699231631128.jpg",
     genre: "Фантастика",
     durationMinutes: 165,
     ageRating: "16+",
@@ -100,8 +100,7 @@ const eventDefs: EventDef[] = [
     title: "Легенда о драконе",
     type: "movie",
     description: "Фэнтезийное приключение о молодом кузнеце, который должен пробудить древнего дракона-хранителя.",
-    posterUrl:
-      "https://upload.wikimedia.org/wikipedia/ru/8/82/%D0%9B%D0%B5%D0%B3%D0%B5%D0%BD%D0%B4%D0%B0_%D0%BE_%D0%9A%D1%80%D0%B0%D1%81%D0%BD%D0%BE%D0%BC_%D0%B4%D1%80%D0%B0%D0%BA%D0%BE%D0%BD%D0%B5.jpg",
+    posterUrl: "https://i.kbd.so/film/93812/61d7e4f7b75daff22da02fcd20b5350d.jpeg",
     genre: "Фэнтези",
     durationMinutes: 128,
     ageRating: "12+",
@@ -152,7 +151,7 @@ const eventDefs: EventDef[] = [
     title: "Космический патруль",
     type: "movie",
     description: "Семейная анимация о команде юных космонавтов, спасающих галактику от забавных злодеев.",
-    posterUrl: "http://www.mirserialov.ru/system/files/imagecache/post_images_gallery/cf46353cdb62.jpg",
+    posterUrl: "https://cdn2.momjunction.com/wp-content/uploads/static-content/illustration_images/best_space_movies_for_kids_to_watch_illustration.jpg.webp",
     genre: "Анимация",
     durationMinutes: 90,
     ageRating: "6+",
@@ -250,7 +249,7 @@ const eventDefs: EventDef[] = [
     title: "Балерина",
     type: "movie",
     description: "Боевик-спин-офф о девушке из мира наёмных убийц, ищущей возмездия за гибель семьи.",
-    posterUrl: "https://www.kinonews.ru/insimgs/2025/poster/thumbs/poster134506_2.webp",
+    posterUrl: "https://www.kinonews.ru/insimgs/2025/poster/poster134506_2.webp",
     genre: "Боевик",
     durationMinutes: 125,
     ageRating: "18+",
@@ -267,7 +266,7 @@ const eventDefs: EventDef[] = [
     type: "movie",
     description: "Российская комедия о неловком отце, который пытается наладить контакт с дочерью через ИИ-помощника.",
     posterUrl:
-      "https://kinobusiness.com/upload/resize_cache/iblock/c39/973vaizu8c5q73qqoyr3km7524dha1i9/360_560_1/image-_1_.jpg",
+      "https://resizer.mail.ru/p/e8c7ce5b-7930-5135-a820-a51dd6199080/AQACA7cSNQngWN21fBdmtEREB7MqACCzENETSDxJMS9AmbioiIW4YGH268wu6tuexBmK3862sLIl_G_wTPHF06FOqEk.jpg",
     genre: "Комедия",
     durationMinutes: 100,
     ageRating: "12+",
@@ -342,7 +341,7 @@ const additionalEventDefs: EventDef[] = [
     type: "movie",
     description:
       "Финал народной трилогии: избалованный богатый наследник вновь оказывается на грани перевоспитания — на этот раз приключения забрасывают героев в эпоху Петра I.",
-    posterUrl: "https://static.kinoafisha.info/k/movie_posters/110/upload/movie_posters/1/1/1/8375111/147604663767.jpg",
+    posterUrl: "https://static.kinoafisha.info/k/movie_posters/400/upload/movie_posters/1/1/1/8375111/147604663767.jpg",
     genre: "Комедия",
     durationMinutes: 116,
     ageRating: "12+",
@@ -377,7 +376,7 @@ const additionalEventDefs: EventDef[] = [
     type: "movie",
     description:
       "Эзотерический детектив-кейпер по роману Ника Тошеса: букинист случайно завладевает рукописью Данте и оказывается втянут в опасную охоту с участием мафии и Ватикана.",
-    posterUrl: "https://static.kinoafisha.info/k/movie_posters/110/upload/movie_posters/4/3/7/8372734/800461579969.jpg",
+    posterUrl: "https://static.kinoafisha.info/k/movie_posters/400/upload/movie_posters/4/3/7/8372734/800461579969.jpg",
     genre: "Драма",
     durationMinutes: 115,
     ageRating: "16+",
@@ -445,7 +444,7 @@ const additionalEventDefs: EventDef[] = [
     type: "movie",
     description:
       "Компания друзей отправляется в круиз по диким озёрам Луизианы, желая увидеть редких животных в естественной среде — и становится дичью сама.",
-    posterUrl: "https://static.kinoafisha.info/k/movie_posters/110/upload/movie_posters/6/4/9/8384946/574544069493.jpg",
+    posterUrl: "https://static.kinoafisha.info/k/movie_posters/400/upload/movie_posters/6/4/9/8384946/574544069493.jpg",
     genre: "Ужасы",
     durationMinutes: 92,
     ageRating: "18+",
@@ -464,7 +463,7 @@ const additionalEventDefs: EventDef[] = [
     type: "movie",
     description:
       "Испанский психологический триллер: похищенный брат возвращается домой с пугающими тайнами, и герою предстоит распутать клубок лжи ненадёжных рассказчиков.",
-    posterUrl: "https://leonardo.osnova.io/21e99680-fe3c-5853-81d7-77010a2c03db/-/scale_crop/592x/",
+    posterUrl: "https://resizer.mail.ru/p/a17279b0-a7a9-5deb-8e7a-6c2338876ec5/AQACE-cwLTdrlWVQ3K7srfehhk0xPN9rzmD8vBcEDWQEyuI-wM_7rxHkZ7GpjH_8ulTVSYZYaXyaKpXBf0ADBkxWEdM.jpg",
     genre: "Детектив",
     durationMinutes: 108,
     ageRating: "18+",
@@ -678,7 +677,7 @@ const additionalEventDefs: EventDef[] = [
     type: "movie",
     description:
       "Дерзкая, абсурдная и в то же время удивительно правдивая история о том, как миньоны покорили Голливуд, стали кинозвёздами, потеряли всё, выпустили монстров на свободу — и в конце концов были вынуждены объединиться, чтобы спасти планету от хаоса.",
-    posterUrl: "https://www.dvhab.ru/kino/kino/images/w1500_57453900.jpeg",
+    posterUrl: "https://www.impawards.com/2026/posters/minions_three.jpg",
     genre: "Мультфильм",
     durationMinutes: 90,
     ageRating: "6+",
@@ -695,7 +694,7 @@ const additionalEventDefs: EventDef[] = [
     type: "movie",
     description:
       "Детектив Энола Холмс оказывается на Мальте, где ей предстоит сложное и опасное расследование.",
-    posterUrl: "https://www.dvhab.ru/kino/kino/images/w1500_57442627.jpg",
+    posterUrl: "https://www.impawards.com/2026/posters/enola_holmes_three.jpg",
     genre: "Детектив",
     durationMinutes: 105,
     ageRating: "12+",
@@ -830,7 +829,7 @@ const concertEventDefs: EventDef[] = [
     type: "concert",
     description:
       "Олег Газманов представляет большую концертную программу из главных хитов десятилетий — «Морячка», «Есаул», «Москва» и многое другое.",
-    posterUrl: "https://gazmanov-oleg.ru/photos/gazmanov-taganrog.jpg",
+    posterUrl: "https://www.gazmanov-bilet.ru/images/upload/gazmanov-1.jpeg",
     genre: "Поп",
     durationMinutes: 115,
     ageRating: "6+",
