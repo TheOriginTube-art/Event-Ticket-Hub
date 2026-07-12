@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, ilike, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, or, isNull, type SQL, sql } from "drizzle-orm";
 import { db, eventsTable, seatsTable, sessionsTable, ticketCategoriesTable, venuesTable } from "@workspace/db";
 import {
   GetEventParams,
@@ -12,6 +12,7 @@ import {
   ListEventsResponse,
 } from "@workspace/api-zod";
 import { getEventMinPriceCents, getEventWithSessions } from "../lib/eventQueries";
+import { ensureDailySessionRollover } from "../lib/sessionRollover";
 
 const router: IRouter = Router();
 
@@ -23,10 +24,15 @@ router.get("/events", async (req, res): Promise<void> => {
   }
   const { type, city, search, sort } = params.data;
 
+  void ensureDailySessionRollover();
+
   const conditions: SQL[] = [];
   if (type) conditions.push(eq(eventsTable.type, type));
   if (search) conditions.push(ilike(eventsTable.title, `%${search}%`));
   if (city) conditions.push(eq(venuesTable.city, city));
+  // Only count/order by sessions that haven't happened yet, so past showings
+  // drop out of city filters, price sort, and "soonest" sort automatically.
+  conditions.push(or(isNull(sessionsTable.startsAt), gte(sessionsTable.startsAt, new Date()))!);
 
   const minPriceCents = sql<number | null>`min(${ticketCategoriesTable.priceCents})`;
   const orderBy =
@@ -71,6 +77,8 @@ router.get("/events/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+
+  void ensureDailySessionRollover();
 
   const event = await getEventWithSessions(params.data.id);
   if (!event) {

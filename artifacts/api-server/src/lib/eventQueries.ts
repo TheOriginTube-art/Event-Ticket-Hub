@@ -1,4 +1,4 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gte, sql } from "drizzle-orm";
 import { db, eventsTable, sessionsTable, ticketCategoriesTable, venuesTable } from "@workspace/db";
 
 export async function getEventWithSessions(id: number) {
@@ -24,7 +24,7 @@ export async function getEventWithSessions(id: number) {
     .from(sessionsTable)
     .innerJoin(venuesTable, eq(venuesTable.id, sessionsTable.venueId))
     .leftJoin(ticketCategoriesTable, eq(ticketCategoriesTable.sessionId, sessionsTable.id))
-    .where(eq(sessionsTable.eventId, id))
+    .where(and(eq(sessionsTable.eventId, id), gte(sessionsTable.startsAt, new Date())))
     .groupBy(sessionsTable.id, venuesTable.id)
     .orderBy(asc(sessionsTable.startsAt));
 
@@ -36,7 +36,7 @@ export async function getEventMinPriceCents(eventId: number): Promise<number | n
     .select({ minPriceCents: sql<number | null>`min(${ticketCategoriesTable.priceCents})` })
     .from(ticketCategoriesTable)
     .innerJoin(sessionsTable, eq(sessionsTable.id, ticketCategoriesTable.sessionId))
-    .where(eq(sessionsTable.eventId, eventId));
+    .where(and(eq(sessionsTable.eventId, eventId), gte(sessionsTable.startsAt, new Date())));
 
   return row?.minPriceCents ?? null;
 }
