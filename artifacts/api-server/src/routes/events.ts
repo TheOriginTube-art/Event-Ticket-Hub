@@ -13,6 +13,7 @@ import {
 } from "@workspace/api-zod";
 import { getEventMinPriceCents, getEventWithSessions } from "../lib/eventQueries";
 import { ensureDailySessionRollover } from "../lib/sessionRollover";
+import { ensureDailySeatDemand } from "../lib/seatDemandSimulator";
 
 const router: IRouter = Router();
 
@@ -24,7 +25,7 @@ router.get("/events", async (req, res): Promise<void> => {
   }
   const { type, city, search, sort } = params.data;
 
-  void ensureDailySessionRollover();
+  void ensureDailySessionRollover().then(() => ensureDailySeatDemand());
 
   const conditions: SQL[] = [];
   if (type) conditions.push(eq(eventsTable.type, type));
@@ -78,7 +79,7 @@ router.get("/events/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  void ensureDailySessionRollover();
+  void ensureDailySessionRollover().then(() => ensureDailySeatDemand());
 
   const event = await getEventWithSessions(params.data.id);
   if (!event) {
