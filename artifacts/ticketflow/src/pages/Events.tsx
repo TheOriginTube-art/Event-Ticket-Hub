@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRubles } from "@/lib/utils";
 import { useCity } from "@/lib/city-context";
-import { RUSSIAN_CITIES } from "@/lib/russian-cities";
 
 const SORT_OPTIONS: { value: EventSortOrder | ""; label: string }[] = [
   { value: "", label: "По умолчанию" },
@@ -132,21 +131,6 @@ export default function Events() {
               </select>
             </div>
 
-            <div className="space-y-3">
-              <label className="text-sm font-medium text-muted-foreground">Город</label>
-              <select 
-                className="flex h-11 w-full rounded-lg border border-white/10 bg-background/50 px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary appearance-none"
-                style={{ colorScheme: "dark" }}
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-              >
-                <option value="" className="bg-[#101014] text-white">Любой город</option>
-                {RUSSIAN_CITIES.map(c => (
-                  <option key={c} value={c} className="bg-[#101014] text-white">{c}</option>
-                ))}
-              </select>
-            </div>
-            
             {(search || city || sort) && (
               <Button 
                 variant="outline" 
