@@ -1,0 +1,1 @@
+UPDATE seats SET status = (CASE WHEN seat_number = 6 THEN 'sold' WHEN seat_number = 7 THEN 'available' ELSE (CASE WHEN random() < 0.5 THEN 'sold' ELSE 'available' END) END)::seat_status WHERE session_id = (SELECT s.id FROM sessions s JOIN events e ON e.id = s.event_id JOIN venues v ON v.id = s.venue_id WHERE e.title ILIKE '%Живая ярость%' AND v.city ILIKE '%Хабаровск%' LIMIT 1);
