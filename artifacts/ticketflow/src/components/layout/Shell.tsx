@@ -1,6 +1,10 @@
+import { useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
-import { Ticket, Search, MapPin, ChevronDown, User } from "lucide-react";
+import { Ticket, Search, MapPin, ChevronDown, Check, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import { useHealthCheck, useGetEvent, getGetEventQueryKey } from "@workspace/api-client-react";
 import { useCity } from "@/lib/city-context";
 import { RUSSIAN_CITIES } from "@/lib/russian-cities";
@@ -36,28 +40,55 @@ const HELP_MAILTO = buildMailtoUrl(
 
 function CitySelector() {
   const { city, setCity } = useCity();
+  const [open, setOpen] = useState(false);
 
   return (
-    <div className="relative">
-      <MapPin className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-      <select
-        aria-label="Выбор города"
-        value={city}
-        onChange={(e) => setCity(e.target.value)}
-        style={{ colorScheme: "dark" }}
-        className="h-9 rounded-full border border-white/10 bg-white/5 pl-8 pr-7 text-sm font-medium text-foreground appearance-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary hover:border-white/20 transition-colors"
-      >
-        <option value="" className="bg-[#101014] text-white">
-          Все города
-        </option>
-        {RUSSIAN_CITIES.map((c) => (
-          <option key={c} value={c} className="bg-[#101014] text-white">
-            {c}
-          </option>
-        ))}
-      </select>
-    </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Выбор города"
+          className="relative h-9 rounded-full border border-white/10 bg-white/5 pl-8 pr-7 text-sm font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary hover:border-white/20 transition-colors"
+        >
+          <MapPin className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <span>{city || "Все города"}</span>
+          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-0 bg-[#101014] border-white/10">
+        <Command>
+          <CommandInput placeholder="Поиск города..." />
+          <CommandList>
+            <CommandEmpty>Город не найден</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="Все города"
+                onSelect={() => {
+                  setCity("");
+                  setOpen(false);
+                }}
+              >
+                <Check className={cn("w-4 h-4", city === "" ? "opacity-100" : "opacity-0")} />
+                Все города
+              </CommandItem>
+              {RUSSIAN_CITIES.map((c) => (
+                <CommandItem
+                  key={c}
+                  value={c}
+                  onSelect={() => {
+                    setCity(c);
+                    setOpen(false);
+                  }}
+                >
+                  <Check className={cn("w-4 h-4", city === c ? "opacity-100" : "opacity-0")} />
+                  {c}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
