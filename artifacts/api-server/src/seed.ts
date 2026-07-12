@@ -455,6 +455,8 @@ const additionalEventDefs: EventDef[] = [
     sessions: [
       { venueName: "Формула Кино Заневский", hall: "Зал 4", daysFromNow: 1, hour: 22, minute: 15 },
       { venueName: "Синема Парк Кольцо", hall: "Зал 5", daysFromNow: 4, hour: 21, minute: 30 },
+      { venueName: "Хабаровск", hall: "Redcom", daysFromNow: 0, hour: 23, minute: 35 },
+      { venueName: "Кинокосмос", hall: "Зал 2", daysFromNow: 1, hour: 20, minute: 0 },
     ],
   },
   {
@@ -671,6 +673,55 @@ const additionalEventDefs: EventDef[] = [
       { venueName: "Хабаровский краевой музыкальный театр", hall: "Основная сцена", daysFromNow: 5, hour: 19, minute: 0 },
     ],
   },
+  {
+    title: "Миньоны и Монстры",
+    type: "movie",
+    description:
+      "Дерзкая, абсурдная и в то же время удивительно правдивая история о том, как миньоны покорили Голливуд, стали кинозвёздами, потеряли всё, выпустили монстров на свободу — и в конце концов были вынуждены объединиться, чтобы спасти планету от хаоса.",
+    posterUrl: "https://www.dvhab.ru/kino/kino/images/w1500_57453900.jpeg",
+    genre: "Мультфильм",
+    durationMinutes: 90,
+    ageRating: "6+",
+    rating: 7.4,
+    sourceName: "Dvhab.ru",
+    priceTiers: MOVIE_TIERS,
+    sessions: [
+      { venueName: "Хабаровск", hall: "Зал 1", daysFromNow: 0, hour: 18, minute: 30 },
+      { venueName: "Кинокосмос", hall: "Зал 1", daysFromNow: 1, hour: 16, minute: 0 },
+    ],
+  },
+  {
+    title: "Энола Холмс 3",
+    type: "movie",
+    description:
+      "Детектив Энола Холмс оказывается на Мальте, где ей предстоит сложное и опасное расследование.",
+    posterUrl: "https://www.dvhab.ru/kino/kino/images/w1500_57442627.jpg",
+    genre: "Детектив",
+    durationMinutes: 105,
+    ageRating: "12+",
+    rating: 7.8,
+    sourceName: "Dvhab.ru",
+    priceTiers: MOVIE_TIERS,
+    sessions: [
+      { venueName: "Хабаровск", hall: "Зал 2", daysFromNow: 2, hour: 19, minute: 45 },
+    ],
+  },
+  {
+    title: "Папа, купи пёсика",
+    type: "movie",
+    description:
+      "Милана получает долгожданный подарок от родителей — щенка Диппи. Но однажды на прогулке щенок теряется в парке и остаётся один на один с большим городом. Диппи знакомится с уличным Котом, крысой Бенгсом и даже влюбляется в чихуахуа Табби, пока Милана ведёт поиски любимого питомца.",
+    posterUrl: "https://www.dvhab.ru/kino/kino/images/big_12780904.jpg",
+    genre: "Мультфильм",
+    durationMinutes: 90,
+    ageRating: "6+",
+    rating: 7.1,
+    sourceName: "Dvhab.ru",
+    priceTiers: MOVIE_TIERS,
+    sessions: [
+      { venueName: "Кинокосмос", hall: "Зал 3", daysFromNow: 0, hour: 14, minute: 0 },
+    ],
+  },
 ];
 
 /** Extra venues referenced by `additionalEventDefs` that aren't in the original `venueDefs`. */
@@ -683,6 +734,10 @@ const additionalVenueDefs = [
   { name: "Гигант", city: "Хабаровск", address: "улица Муравьева-Амурского, 19" },
   { name: "Хабаровский краевой театр драмы", city: "Хабаровск", address: "улица Дзержинского, 44" },
   { name: "Хабаровский краевой музыкальный театр", city: "Хабаровск", address: "улица Карла Маркса, 64" },
+  // Совкино и Гигант по данным dvhab.ru временно не работают -- добавляем
+  // реально действующие сейчас кинотеатры Хабаровска для новых фильмов.
+  { name: "Хабаровск", city: "Хабаровск", address: "улица Стрельникова, 4" },
+  { name: "Кинокосмос", city: "Хабаровск", address: "улица Краснореченская, 102/3, МРЦ «Космопорт»" },
 ];
 
 /** Concert venues referenced by `concertEventDefs`. */
