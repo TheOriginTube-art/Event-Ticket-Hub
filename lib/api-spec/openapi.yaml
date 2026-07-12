@@ -394,6 +394,12 @@ paths:
           schema:
             type: string
             enum: [pending, awaiting_confirmation, paid, cancelled, all]
+        - name: search
+          in: query
+          required: false
+          description: Filter by customer name or email (case-insensitive substring match)
+          schema:
+            type: string
       responses:
         "200":
           description: List of orders
@@ -407,6 +413,475 @@ paths:
           description: Not authenticated
         "403":
           description: Admin access required
+
+  /admin/orders/export:
+    get:
+      operationId: exportAdminOrders
+      tags: [admin]
+      summary: Export orders as CSV (admin only)
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, awaiting_confirmation, paid, cancelled, all]
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+
+  /admin/analytics:
+    get:
+      operationId: getAdminAnalytics
+      tags: [admin]
+      summary: Revenue and sales analytics (admin only)
+      parameters:
+        - name: days
+          in: query
+          required: false
+          description: Number of trailing days to include in the daily breakdown. Defaults to 30.
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Analytics summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAnalytics"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+
+  /admin/users:
+    get:
+      operationId: listAdminUsers
+      tags: [admin]
+      summary: List registered users (admin only)
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminUser"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+
+  /admin/users/{id}:
+    patch:
+      operationId: updateAdminUser
+      tags: [admin]
+      summary: Grant or revoke admin access for a user (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAdminUserInput"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "400":
+          description: Cannot revoke your own admin access
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+        "404":
+          description: User not found
+
+  /admin/venues:
+    get:
+      operationId: listAdminVenues
+      tags: [admin]
+      summary: List all venues (admin only)
+      responses:
+        "200":
+          description: List of venues
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Venue"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+    post:
+      operationId: createAdminVenue
+      tags: [admin]
+      summary: Create a venue (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VenueInput"
+      responses:
+        "200":
+          description: Created venue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Venue"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+
+  /admin/venues/{id}:
+    patch:
+      operationId: updateAdminVenue
+      tags: [admin]
+      summary: Update a venue (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VenueInput"
+      responses:
+        "200":
+          description: Updated venue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Venue"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+        "404":
+          description: Venue not found
+    delete:
+      operationId: deleteAdminVenue
+      tags: [admin]
+      summary: Delete a venue (admin only, blocked while it still has sessions)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Venue deleted
+        "400":
+          description: Venue still has sessions scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+        "404":
+          description: Venue not found
+
+  /admin/events:
+    get:
+      operationId: listAdminEvents
+      tags: [admin]
+      summary: List all events including ones with no upcoming sessions (admin only)
+      responses:
+        "200":
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminEvent"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+    post:
+      operationId: createAdminEvent
+      tags: [admin]
+      summary: Create an event (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventInput"
+      responses:
+        "200":
+          description: Created event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminEvent"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+
+  /admin/events/{id}:
+    patch:
+      operationId: updateAdminEvent
+      tags: [admin]
+      summary: Update an event (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventInput"
+      responses:
+        "200":
+          description: Updated event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminEvent"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+        "404":
+          description: Event not found
+    delete:
+      operationId: deleteAdminEvent
+      tags: [admin]
+      summary: Delete an event (admin only, blocked while it has any orders)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Event deleted
+        "400":
+          description: Event has order history and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+        "404":
+          description: Event not found
+
+  /admin/events/{id}/sessions:
+    get:
+      operationId: listAdminEventSessions
+      tags: [admin]
+      summary: List all sessions for an event, including past ones (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessionSummary"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+
+  /admin/sessions:
+    post:
+      operationId: createAdminSession
+      tags: [admin]
+      summary: Create a session with its ticket categories and seat map (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionInput"
+      responses:
+        "200":
+          description: Created session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionDetail"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+        "404":
+          description: Event or venue not found
+
+  /admin/sessions/{id}:
+    patch:
+      operationId: updateAdminSession
+      tags: [admin]
+      summary: Update a session's venue, hall and start time (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionUpdateInput"
+      responses:
+        "200":
+          description: Updated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionDetail"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+        "404":
+          description: Session or venue not found
+    delete:
+      operationId: deleteAdminSession
+      tags: [admin]
+      summary: Delete a session (admin only, blocked while it has any orders)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Session deleted
+        "400":
+          description: Session has order history and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+        "404":
+          description: Session not found
+
+  /admin/ticket-categories/{id}:
+    patch:
+      operationId: updateAdminTicketCategory
+      tags: [admin]
+      summary: Update a ticket category's price (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TicketCategoryPriceInput"
+      responses:
+        "200":
+          description: Updated ticket category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketCategory"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+        "404":
+          description: Ticket category not found
+
+  /admin/seats/{id}/toggle-block:
+    post:
+      operationId: toggleAdminSeatBlock
+      tags: [admin]
+      summary: Block or unblock a seat so it cannot be purchased (admin only). Has no effect on reserved/sold seats.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated seat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Seat"
+        "400":
+          description: Seat is reserved or sold and cannot be blocked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+        "404":
+          description: Seat not found
 
   /admin/orders/{id}/confirm:
     post:
@@ -651,7 +1126,7 @@ components:
 
     SeatStatus:
       type: string
-      enum: [available, reserved, sold]
+      enum: [available, reserved, sold, blocked]
 
     Seat:
       type: object
@@ -985,6 +1460,221 @@ components:
       properties:
         error:
           type: string
+
+    VenueInput:
+      type: object
+      required: [name, city, address]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        city:
+          type: string
+          minLength: 1
+        address:
+          type: string
+          minLength: 1
+
+    EventInput:
+      type: object
+      required:
+        [title, type, description, posterUrl, genre, durationMinutes, ageRating, rating, sourceName]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        type:
+          $ref: "#/components/schemas/EventType"
+        description:
+          type: string
+          minLength: 1
+        posterUrl:
+          type: string
+          minLength: 1
+        genre:
+          type: string
+          minLength: 1
+        durationMinutes:
+          type: integer
+          minimum: 1
+        ageRating:
+          type: string
+          minLength: 1
+        rating:
+          type: number
+          minimum: 0
+          maximum: 10
+        sourceName:
+          type: string
+          minLength: 1
+
+    AdminEvent:
+      type: object
+      required:
+        [
+          id,
+          title,
+          type,
+          description,
+          posterUrl,
+          genre,
+          durationMinutes,
+          ageRating,
+          rating,
+          sourceName,
+          upcomingSessionsCount,
+        ]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        type:
+          $ref: "#/components/schemas/EventType"
+        description:
+          type: string
+        posterUrl:
+          type: string
+        genre:
+          type: string
+        durationMinutes:
+          type: integer
+        ageRating:
+          type: string
+        rating:
+          type: number
+        sourceName:
+          type: string
+        upcomingSessionsCount:
+          type: integer
+
+    TicketCategoryInput:
+      type: object
+      required: [name, priceCents, seatsTotal]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        priceCents:
+          type: integer
+          minimum: 1
+        seatsTotal:
+          type: integer
+          minimum: 1
+          maximum: 500
+
+    TicketCategoryPriceInput:
+      type: object
+      required: [priceCents]
+      properties:
+        priceCents:
+          type: integer
+          minimum: 1
+
+    SessionInput:
+      type: object
+      required: [eventId, venueId, startsAt, hall, ticketCategories]
+      properties:
+        eventId:
+          type: integer
+        venueId:
+          type: integer
+        startsAt:
+          type: string
+          format: date-time
+        hall:
+          type: string
+          minLength: 1
+        ticketCategories:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/TicketCategoryInput"
+
+    SessionUpdateInput:
+      type: object
+      required: [venueId, startsAt, hall]
+      properties:
+        venueId:
+          type: integer
+        startsAt:
+          type: string
+          format: date-time
+        hall:
+          type: string
+          minLength: 1
+
+    AdminUser:
+      type: object
+      required: [id, email, name, isAdmin, createdAt, ordersCount]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+        isAdmin:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        ordersCount:
+          type: integer
+
+    UpdateAdminUserInput:
+      type: object
+      required: [isAdmin]
+      properties:
+        isAdmin:
+          type: boolean
+
+    AnalyticsDailyPoint:
+      type: object
+      required: [date, revenueCents, ticketsSold, ordersCount]
+      properties:
+        date:
+          type: string
+        revenueCents:
+          type: integer
+        ticketsSold:
+          type: integer
+        ordersCount:
+          type: integer
+
+    AnalyticsTopEvent:
+      type: object
+      required: [eventId, title, ticketsSold, revenueCents]
+      properties:
+        eventId:
+          type: integer
+        title:
+          type: string
+        ticketsSold:
+          type: integer
+        revenueCents:
+          type: integer
+
+    AdminAnalytics:
+      type: object
+      required: [totalRevenueCents, totalTicketsSold, totalOrders, upcomingSessionsCount, dailyBreakdown, topEvents]
+      properties:
+        totalRevenueCents:
+          type: integer
+        totalTicketsSold:
+          type: integer
+        totalOrders:
+          type: integer
+        upcomingSessionsCount:
+          type: integer
+        dailyBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalyticsDailyPoint"
+        topEvents:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalyticsTopEvent"
 
     HomeHighlights:
       type: object

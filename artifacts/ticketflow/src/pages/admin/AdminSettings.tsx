@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Loader2, ShieldAlert, Save, ArrowLeft } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import { ObjectUploader } from "@workspace/object-storage-web";
 import type { UppyFile } from "@uppy/core";
 import {
@@ -12,8 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth-context";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "wouter";
 import { useSeo } from "@/lib/seo";
+import { AdminNav } from "@/components/admin/AdminNav";
 
 export default function AdminSettings() {
   const [, setLocation] = useLocation();
@@ -67,21 +67,12 @@ export default function AdminSettings() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-10 max-w-2xl">
-      <Link href="/admin/orders" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-white mb-6">
-        <ArrowLeft className="w-4 h-4" />
-        К заказам
-      </Link>
+    <div className="container mx-auto px-4 py-10">
+      <AdminNav />
 
-      <div className="flex items-center gap-3 mb-8">
-        <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center">
-          <ShieldAlert className="w-6 h-6 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold leading-tight">Настройки оплаты</h1>
-          <p className="text-sm text-muted-foreground">QR-код Ozon Банк, который видят покупатели при оплате</p>
-        </div>
-      </div>
+      <div className="max-w-2xl">
+        <h2 className="text-xl font-bold mb-1">Настройки оплаты</h2>
+        <p className="text-sm text-muted-foreground mb-6">QR-код Ozon Банк, который видят покупатели при оплате</p>
 
       <div className="bg-card border border-white/5 rounded-xl p-6 space-y-6">
         <div>
@@ -136,6 +127,7 @@ export default function AdminSettings() {
             <span className="text-sm text-destructive">Не удалось сохранить настройки</span>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

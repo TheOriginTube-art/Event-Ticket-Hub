@@ -13,4 +13,5 @@ export const SeatStatus = {
   available: 'available',
   reserved: 'reserved',
   sold: 'sold',
+  blocked: 'blocked',
 } as const;

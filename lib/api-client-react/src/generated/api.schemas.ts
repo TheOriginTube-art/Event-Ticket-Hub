@@ -51,6 +51,7 @@ export const SeatStatus = {
   available: 'available',
   reserved: 'reserved',
   sold: 'sold',
+  blocked: 'blocked',
 } as const;
 
 export interface Seat {
@@ -256,6 +257,122 @@ export interface ErrorEnvelope {
   error: string;
 }
 
+export interface VenueInput {
+  /** @minLength 1 */
+  name: string;
+  /** @minLength 1 */
+  city: string;
+  /** @minLength 1 */
+  address: string;
+}
+
+export interface EventInput {
+  /** @minLength 1 */
+  title: string;
+  type: EventType;
+  /** @minLength 1 */
+  description: string;
+  /** @minLength 1 */
+  posterUrl: string;
+  /** @minLength 1 */
+  genre: string;
+  /** @minimum 1 */
+  durationMinutes: number;
+  /** @minLength 1 */
+  ageRating: string;
+  /**
+     * @minimum 0
+     * @maximum 10
+     */
+  rating: number;
+  /** @minLength 1 */
+  sourceName: string;
+}
+
+export interface AdminEvent {
+  id: number;
+  title: string;
+  type: EventType;
+  description: string;
+  posterUrl: string;
+  genre: string;
+  durationMinutes: number;
+  ageRating: string;
+  rating: number;
+  sourceName: string;
+  upcomingSessionsCount: number;
+}
+
+export interface TicketCategoryInput {
+  /** @minLength 1 */
+  name: string;
+  /** @minimum 1 */
+  priceCents: number;
+  /**
+     * @minimum 1
+     * @maximum 500
+     */
+  seatsTotal: number;
+}
+
+export interface TicketCategoryPriceInput {
+  /** @minimum 1 */
+  priceCents: number;
+}
+
+export interface SessionInput {
+  eventId: number;
+  venueId: number;
+  startsAt: string;
+  /** @minLength 1 */
+  hall: string;
+  /** @minItems 1 */
+  ticketCategories: TicketCategoryInput[];
+}
+
+export interface SessionUpdateInput {
+  venueId: number;
+  startsAt: string;
+  /** @minLength 1 */
+  hall: string;
+}
+
+export interface AdminUser {
+  id: number;
+  email: string;
+  name: string;
+  isAdmin: boolean;
+  createdAt: string;
+  ordersCount: number;
+}
+
+export interface UpdateAdminUserInput {
+  isAdmin: boolean;
+}
+
+export interface AnalyticsDailyPoint {
+  date: string;
+  revenueCents: number;
+  ticketsSold: number;
+  ordersCount: number;
+}
+
+export interface AnalyticsTopEvent {
+  eventId: number;
+  title: string;
+  ticketsSold: number;
+  revenueCents: number;
+}
+
+export interface AdminAnalytics {
+  totalRevenueCents: number;
+  totalTicketsSold: number;
+  totalOrders: number;
+  upcomingSessionsCount: number;
+  dailyBreakdown: AnalyticsDailyPoint[];
+  topEvents: AnalyticsTopEvent[];
+}
+
 export interface HomeHighlights {
   featuredEvents: EventSummary[];
   totalUpcomingSessions: number;
@@ -291,6 +408,10 @@ export type ListAdminOrdersParams = {
  * Filter by order status. Defaults to pending + awaiting_confirmation.
  */
 status?: ListAdminOrdersStatus;
+/**
+ * Filter by customer name or email (case-insensitive substring match)
+ */
+search?: string;
 };
 
 export type ListAdminOrdersStatus = typeof ListAdminOrdersStatus[keyof typeof ListAdminOrdersStatus];
@@ -303,6 +424,29 @@ export const ListAdminOrdersStatus = {
   cancelled: 'cancelled',
   all: 'all',
 } as const;
+
+export type ExportAdminOrdersParams = {
+status?: ExportAdminOrdersStatus;
+search?: string;
+};
+
+export type ExportAdminOrdersStatus = typeof ExportAdminOrdersStatus[keyof typeof ExportAdminOrdersStatus];
+
+
+export const ExportAdminOrdersStatus = {
+  pending: 'pending',
+  awaiting_confirmation: 'awaiting_confirmation',
+  paid: 'paid',
+  cancelled: 'cancelled',
+  all: 'all',
+} as const;
+
+export type GetAdminAnalyticsParams = {
+/**
+ * Number of trailing days to include in the daily breakdown. Defaults to 30.
+ */
+days?: number;
+};
 
 export type GetHomeHighlightsParams = {
 city?: string;

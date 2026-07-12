@@ -8,6 +8,11 @@ import homeRouter from "./home";
 import authRouter from "./auth";
 import paymentRouter from "./payment";
 import adminRouter from "./admin";
+import adminVenuesRouter from "./adminVenues";
+import adminEventsRouter from "./adminEvents";
+import adminSessionsRouter from "./adminSessions";
+import adminUsersRouter from "./adminUsers";
+import adminAnalyticsRouter from "./adminAnalytics";
 import storageRouter from "./storage";
 import { attachUser } from "../lib/auth";
 
@@ -24,6 +29,11 @@ router.use(homeRouter);
 router.use(authRouter);
 router.use(paymentRouter);
 router.use(adminRouter);
+router.use(adminVenuesRouter);
+router.use(adminEventsRouter);
+router.use(adminSessionsRouter);
+router.use(adminUsersRouter);
+router.use(adminAnalyticsRouter);
 router.use(storageRouter);
 
 export default router;

@@ -12,4 +12,8 @@ export type ListAdminOrdersParams = {
  * Filter by order status. Defaults to pending + awaiting_confirmation.
  */
 status?: ListAdminOrdersStatus;
+/**
+ * Filter by customer name or email (case-insensitive substring match)
+ */
+search?: string;
 };

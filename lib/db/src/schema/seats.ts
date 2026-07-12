@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 import { sessionsTable } from "./sessions";
 import { ticketCategoriesTable } from "./ticketCategories";
 
-export const seatStatusEnum = pgEnum("seat_status", ["available", "reserved", "sold"]);
+export const seatStatusEnum = pgEnum("seat_status", ["available", "reserved", "sold", "blocked"]);
 
 export const seatsTable = pgTable("seats", {
   id: serial("id").primaryKey(),

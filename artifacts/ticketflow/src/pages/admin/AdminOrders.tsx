@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Loader2, ShieldAlert, Check, X, RefreshCw, Settings } from "lucide-react";
+import { Loader2, Check, X, RefreshCw, Download, Search } from "lucide-react";
 import {
   useListAdminOrders,
   getListAdminOrdersQueryKey,
@@ -10,11 +10,12 @@ import {
 import type { ListAdminOrdersParams } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { formatRubles, formatDate, formatTime } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
-import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSeo } from "@/lib/seo";
+import { AdminNav } from "@/components/admin/AdminNav";
 
 const STATUS_TABS: { value: NonNullable<ListAdminOrdersParams["status"]>; label: string }[] = [
   { value: "awaiting_confirmation", label: "Ждут подтверждения" },
@@ -27,14 +28,17 @@ export default function AdminOrders() {
   const [, setLocation] = useLocation();
   const { user, isLoading: isAuthLoading } = useAuth();
   const [status, setStatus] = useState<NonNullable<ListAdminOrdersParams["status"]>>("awaiting_confirmation");
+  const [search, setSearch] = useState("");
   const queryClient = useQueryClient();
 
   useSeo({ title: "Админ: заказы", description: "Управление заказами TicketFlow.", noindex: true });
 
-  const { data: orders, isLoading } = useListAdminOrders(
-    { status },
-    { query: { queryKey: getListAdminOrdersQueryKey({ status }), enabled: !!user?.isAdmin, refetchInterval: 10000 } },
-  );
+  const queryParams: ListAdminOrdersParams = search.trim() ? { status, search: search.trim() } : { status };
+  const { data: orders, isLoading } = useListAdminOrders(queryParams, {
+    query: { queryKey: getListAdminOrdersQueryKey(queryParams), enabled: !!user?.isAdmin, refetchInterval: 10000 },
+  });
+
+  const exportUrl = `${import.meta.env.BASE_URL}api/admin/orders/export?status=${status}${search.trim() ? `&search=${encodeURIComponent(search.trim())}` : ""}`;
 
   const confirmMutation = useConfirmAdminOrder();
   const rejectMutation = useRejectAdminOrder();
@@ -45,7 +49,7 @@ export default function AdminOrders() {
     }
   }, [isAuthLoading, user, setLocation]);
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: getListAdminOrdersQueryKey({ status }) });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: getListAdminOrdersQueryKey(queryParams) });
 
   if (isAuthLoading || !user?.isAdmin) {
     return (
@@ -57,27 +61,31 @@ export default function AdminOrders() {
 
   return (
     <div className="container mx-auto px-4 py-10">
-      <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center">
-            <ShieldAlert className="w-6 h-6 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold leading-tight">Заказы</h1>
-            <p className="text-sm text-muted-foreground">Проверка и подтверждение оплаты по QR-коду</p>
-          </div>
-        </div>
+      <AdminNav />
+
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+        <h2 className="text-xl font-bold">Заказы</h2>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" className="border-white/10" onClick={refresh} title="Обновить">
             <RefreshCw className="w-4 h-4" />
           </Button>
-          <Link href="/admin/settings">
+          <a href={exportUrl} target="_blank" rel="noreferrer">
             <Button variant="outline" className="gap-2 border-white/10">
-              <Settings className="w-4 h-4" />
-              Настройки оплаты
+              <Download className="w-4 h-4" />
+              Экспорт CSV
             </Button>
-          </Link>
+          </a>
         </div>
+      </div>
+
+      <div className="relative mb-4 max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Поиск по имени или e-mail"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       <div className="flex flex-wrap gap-2 mb-8">

@@ -13,6 +13,7 @@ import {
 import {
   ListAdminOrdersQueryParams,
   ListAdminOrdersResponse,
+  ExportAdminOrdersQueryParams,
   ConfirmAdminOrderParams,
   ConfirmAdminOrderResponse,
   RejectAdminOrderParams,
@@ -77,6 +78,25 @@ async function buildOrderDetail(order: typeof ordersTable.$inferSelect) {
   };
 }
 
+function statusFilter(status: string | undefined) {
+  return !status || status === "all"
+    ? undefined
+    : status === "pending"
+      ? eq(ordersTable.status, "pending")
+      : status === "awaiting_confirmation"
+        ? eq(ordersTable.status, "awaiting_confirmation")
+        : status === "paid"
+          ? eq(ordersTable.status, "paid")
+          : eq(ordersTable.status, "cancelled");
+}
+
+function matchesSearch(order: typeof ordersTable.$inferSelect, search: string | undefined): boolean {
+  if (!search) return true;
+  const needle = search.trim().toLowerCase();
+  if (!needle) return true;
+  return order.customerName.toLowerCase().includes(needle) || order.customerEmail.toLowerCase().includes(needle);
+}
+
 router.get("/admin/orders", requireAdmin, async (req, res): Promise<void> => {
   const params = ListAdminOrdersQueryParams.safeParse(req.query);
   if (!params.success) {
@@ -90,23 +110,73 @@ router.get("/admin/orders", requireAdmin, async (req, res): Promise<void> => {
   const rows = await db
     .select()
     .from(ordersTable)
-    .where(
-      !status || status === "all"
-        ? undefined
-        : status === "pending"
-          ? eq(ordersTable.status, "pending")
-          : status === "awaiting_confirmation"
-            ? eq(ordersTable.status, "awaiting_confirmation")
-            : status === "paid"
-              ? eq(ordersTable.status, "paid")
-              : eq(ordersTable.status, "cancelled"),
-    )
+    .where(statusFilter(status))
     .orderBy(desc(ordersTable.createdAt));
 
-  const filtered = status && status !== "all" ? rows : rows.filter((o) => o.status !== "cancelled");
+  const filtered = (status && status !== "all" ? rows : rows.filter((o) => o.status !== "cancelled")).filter((o) =>
+    matchesSearch(o, params.data.search),
+  );
 
   const details = (await Promise.all(filtered.map(buildOrderDetail))).filter((o) => o !== null);
   res.json(ListAdminOrdersResponse.parse(details));
+});
+
+router.get("/admin/orders/export", requireAdmin, async (req, res): Promise<void> => {
+  const params = ExportAdminOrdersQueryParams.safeParse(req.query);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const status = params.data.status;
+  const rows = await db
+    .select()
+    .from(ordersTable)
+    .where(statusFilter(status))
+    .orderBy(desc(ordersTable.createdAt));
+
+  const filtered = (status && status !== "all" ? rows : rows.filter((o) => o.status !== "cancelled")).filter((o) =>
+    matchesSearch(o, params.data.search),
+  );
+
+  const details = (await Promise.all(filtered.map(buildOrderDetail))).filter((o) => o !== null);
+
+  const escapeCsv = (value: string): string => `"${value.replace(/"/g, '""')}"`;
+  const header = [
+    "ID",
+    "Статус",
+    "Метод оплаты",
+    "Сумма (руб.)",
+    "Клиент",
+    "Email",
+    "Мероприятие",
+    "Сеанс",
+    "Место",
+    "Дата создания",
+  ];
+  const lines = [header.join(",")];
+  for (const order of details) {
+    for (const seat of order.seats) {
+      lines.push(
+        [
+          String(order.id),
+          order.status,
+          order.paymentMethod,
+          (order.totalAmountCents / 100).toFixed(2),
+          escapeCsv(order.customerName),
+          escapeCsv(order.customerEmail),
+          escapeCsv(order.event.title),
+          new Date(order.session.startsAt).toISOString(),
+          escapeCsv(`${seat.categoryName} ${seat.rowLabel}${seat.seatNumber}`),
+          new Date(order.createdAt).toISOString(),
+        ].join(","),
+      );
+    }
+  }
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="orders-${Date.now()}.csv"`);
+  res.send("\uFEFF" + lines.join("\n"));
 });
 
 router.post("/admin/orders/:id/confirm", requireAdmin, async (req, res): Promise<void> => {

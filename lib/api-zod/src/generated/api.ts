@@ -155,7 +155,7 @@ export const GetSessionSeatsResponseItem = zod.object({
   "ticketCategoryId": zod.number(),
   "rowLabel": zod.string(),
   "seatNumber": zod.number(),
-  "status": zod.enum(['available', 'reserved', 'sold']),
+  "status": zod.enum(['available', 'reserved', 'sold', 'blocked']),
   "priceCents": zod.number(),
   "categoryName": zod.string()
 })
@@ -428,7 +428,8 @@ export const UpdatePaymentSettingsResponse = zod.object({
  * @summary List orders for manual payment review (admin only)
  */
 export const ListAdminOrdersQueryParams = zod.object({
-  "status": zod.enum(['pending', 'awaiting_confirmation', 'paid', 'cancelled', 'all']).optional().describe('Filter by order status. Defaults to pending + awaiting_confirmation.')
+  "status": zod.enum(['pending', 'awaiting_confirmation', 'paid', 'cancelled', 'all']).optional().describe('Filter by order status. Defaults to pending + awaiting_confirmation.'),
+  "search": zod.coerce.string().optional().describe('Filter by customer name or email (case-insensitive substring match)')
 })
 
 export const ListAdminOrdersResponseItem = zod.object({
@@ -475,6 +476,451 @@ export const ListAdminOrdersResponseItem = zod.object({
 }))
 })
 export const ListAdminOrdersResponse = zod.array(ListAdminOrdersResponseItem)
+
+
+/**
+ * @summary Export orders as CSV (admin only)
+ */
+export const ExportAdminOrdersQueryParams = zod.object({
+  "status": zod.enum(['pending', 'awaiting_confirmation', 'paid', 'cancelled', 'all']).optional(),
+  "search": zod.coerce.string().optional()
+})
+
+export const ExportAdminOrdersResponse = zod.unknown()
+
+
+/**
+ * @summary Revenue and sales analytics (admin only)
+ */
+export const GetAdminAnalyticsQueryParams = zod.object({
+  "days": zod.coerce.number().optional().describe('Number of trailing days to include in the daily breakdown. Defaults to 30.')
+})
+
+export const GetAdminAnalyticsResponse = zod.object({
+  "totalRevenueCents": zod.number(),
+  "totalTicketsSold": zod.number(),
+  "totalOrders": zod.number(),
+  "upcomingSessionsCount": zod.number(),
+  "dailyBreakdown": zod.array(zod.object({
+  "date": zod.string(),
+  "revenueCents": zod.number(),
+  "ticketsSold": zod.number(),
+  "ordersCount": zod.number()
+})),
+  "topEvents": zod.array(zod.object({
+  "eventId": zod.number(),
+  "title": zod.string(),
+  "ticketsSold": zod.number(),
+  "revenueCents": zod.number()
+}))
+})
+
+
+/**
+ * @summary List registered users (admin only)
+ */
+export const ListAdminUsersResponseItem = zod.object({
+  "id": zod.number(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "isAdmin": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "ordersCount": zod.number()
+})
+export const ListAdminUsersResponse = zod.array(ListAdminUsersResponseItem)
+
+
+/**
+ * @summary Grant or revoke admin access for a user (admin only)
+ */
+export const UpdateAdminUserParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateAdminUserBody = zod.object({
+  "isAdmin": zod.boolean()
+})
+
+export const UpdateAdminUserResponse = zod.object({
+  "id": zod.number(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "isAdmin": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "ordersCount": zod.number()
+})
+
+
+/**
+ * @summary List all venues (admin only)
+ */
+export const ListAdminVenuesResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "city": zod.string(),
+  "address": zod.string()
+})
+export const ListAdminVenuesResponse = zod.array(ListAdminVenuesResponseItem)
+
+
+/**
+ * @summary Create a venue (admin only)
+ */
+
+
+
+
+
+export const CreateAdminVenueBody = zod.object({
+  "name": zod.string().min(1),
+  "city": zod.string().min(1),
+  "address": zod.string().min(1)
+})
+
+export const CreateAdminVenueResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "city": zod.string(),
+  "address": zod.string()
+})
+
+
+/**
+ * @summary Update a venue (admin only)
+ */
+export const UpdateAdminVenueParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+
+
+export const UpdateAdminVenueBody = zod.object({
+  "name": zod.string().min(1),
+  "city": zod.string().min(1),
+  "address": zod.string().min(1)
+})
+
+export const UpdateAdminVenueResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "city": zod.string(),
+  "address": zod.string()
+})
+
+
+/**
+ * @summary Delete a venue (admin only, blocked while it still has sessions)
+ */
+export const DeleteAdminVenueParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteAdminVenueResponse = zod.void()
+
+
+/**
+ * @summary List all events including ones with no upcoming sessions (admin only)
+ */
+export const ListAdminEventsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "type": zod.enum(['movie', 'theater', 'concert']),
+  "description": zod.string(),
+  "posterUrl": zod.string(),
+  "genre": zod.string(),
+  "durationMinutes": zod.number(),
+  "ageRating": zod.string(),
+  "rating": zod.number(),
+  "sourceName": zod.string(),
+  "upcomingSessionsCount": zod.number()
+})
+export const ListAdminEventsResponse = zod.array(ListAdminEventsResponseItem)
+
+
+/**
+ * @summary Create an event (admin only)
+ */
+
+
+
+
+
+
+export const createAdminEventBodyRatingMin = 0;
+export const createAdminEventBodyRatingMax = 10;
+
+
+
+
+export const CreateAdminEventBody = zod.object({
+  "title": zod.string().min(1),
+  "type": zod.enum(['movie', 'theater', 'concert']),
+  "description": zod.string().min(1),
+  "posterUrl": zod.string().min(1),
+  "genre": zod.string().min(1),
+  "durationMinutes": zod.number().min(1),
+  "ageRating": zod.string().min(1),
+  "rating": zod.number().min(createAdminEventBodyRatingMin).max(createAdminEventBodyRatingMax),
+  "sourceName": zod.string().min(1)
+})
+
+export const CreateAdminEventResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "type": zod.enum(['movie', 'theater', 'concert']),
+  "description": zod.string(),
+  "posterUrl": zod.string(),
+  "genre": zod.string(),
+  "durationMinutes": zod.number(),
+  "ageRating": zod.string(),
+  "rating": zod.number(),
+  "sourceName": zod.string(),
+  "upcomingSessionsCount": zod.number()
+})
+
+
+/**
+ * @summary Update an event (admin only)
+ */
+export const UpdateAdminEventParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+
+
+
+export const updateAdminEventBodyRatingMin = 0;
+export const updateAdminEventBodyRatingMax = 10;
+
+
+
+
+export const UpdateAdminEventBody = zod.object({
+  "title": zod.string().min(1),
+  "type": zod.enum(['movie', 'theater', 'concert']),
+  "description": zod.string().min(1),
+  "posterUrl": zod.string().min(1),
+  "genre": zod.string().min(1),
+  "durationMinutes": zod.number().min(1),
+  "ageRating": zod.string().min(1),
+  "rating": zod.number().min(updateAdminEventBodyRatingMin).max(updateAdminEventBodyRatingMax),
+  "sourceName": zod.string().min(1)
+})
+
+export const UpdateAdminEventResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "type": zod.enum(['movie', 'theater', 'concert']),
+  "description": zod.string(),
+  "posterUrl": zod.string(),
+  "genre": zod.string(),
+  "durationMinutes": zod.number(),
+  "ageRating": zod.string(),
+  "rating": zod.number(),
+  "sourceName": zod.string(),
+  "upcomingSessionsCount": zod.number()
+})
+
+
+/**
+ * @summary Delete an event (admin only, blocked while it has any orders)
+ */
+export const DeleteAdminEventParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteAdminEventResponse = zod.void()
+
+
+/**
+ * @summary List all sessions for an event, including past ones (admin only)
+ */
+export const ListAdminEventSessionsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListAdminEventSessionsResponseItem = zod.object({
+  "id": zod.number(),
+  "eventId": zod.number(),
+  "startsAt": zod.coerce.date(),
+  "hall": zod.string().nullable(),
+  "venue": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "city": zod.string(),
+  "address": zod.string()
+}),
+  "minPriceCents": zod.number().nullable()
+})
+export const ListAdminEventSessionsResponse = zod.array(ListAdminEventSessionsResponseItem)
+
+
+/**
+ * @summary Create a session with its ticket categories and seat map (admin only)
+ */
+
+
+
+export const createAdminSessionBodyTicketCategoriesItemSeatsTotalMax = 500;
+
+
+
+
+export const CreateAdminSessionBody = zod.object({
+  "eventId": zod.number(),
+  "venueId": zod.number(),
+  "startsAt": zod.coerce.date(),
+  "hall": zod.string().min(1),
+  "ticketCategories": zod.array(zod.object({
+  "name": zod.string().min(1),
+  "priceCents": zod.number().min(1),
+  "seatsTotal": zod.number().min(1).max(createAdminSessionBodyTicketCategoriesItemSeatsTotalMax)
+})).min(1)
+})
+
+export const CreateAdminSessionResponse = zod.object({
+  "id": zod.number(),
+  "eventId": zod.number(),
+  "startsAt": zod.coerce.date(),
+  "hall": zod.string().nullable(),
+  "venue": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "city": zod.string(),
+  "address": zod.string()
+}),
+  "ticketCategories": zod.array(zod.object({
+  "id": zod.number(),
+  "sessionId": zod.number(),
+  "name": zod.string(),
+  "priceCents": zod.number(),
+  "seatsTotal": zod.number(),
+  "seatsAvailable": zod.number()
+})),
+  "event": zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "type": zod.enum(['movie', 'theater', 'concert']),
+  "posterUrl": zod.string().nullable(),
+  "genre": zod.string().nullable(),
+  "durationMinutes": zod.number().nullable(),
+  "ageRating": zod.string().nullable(),
+  "rating": zod.number().nullable(),
+  "sourceName": zod.string(),
+  "minPriceCents": zod.number().nullable(),
+  "cities": zod.array(zod.string()).describe('Distinct cities where this event has scheduled sessions.')
+})
+})
+
+
+/**
+ * @summary Update a session's venue, hall and start time (admin only)
+ */
+export const UpdateAdminSessionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+export const UpdateAdminSessionBody = zod.object({
+  "venueId": zod.number(),
+  "startsAt": zod.coerce.date(),
+  "hall": zod.string().min(1)
+})
+
+export const UpdateAdminSessionResponse = zod.object({
+  "id": zod.number(),
+  "eventId": zod.number(),
+  "startsAt": zod.coerce.date(),
+  "hall": zod.string().nullable(),
+  "venue": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "city": zod.string(),
+  "address": zod.string()
+}),
+  "ticketCategories": zod.array(zod.object({
+  "id": zod.number(),
+  "sessionId": zod.number(),
+  "name": zod.string(),
+  "priceCents": zod.number(),
+  "seatsTotal": zod.number(),
+  "seatsAvailable": zod.number()
+})),
+  "event": zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "type": zod.enum(['movie', 'theater', 'concert']),
+  "posterUrl": zod.string().nullable(),
+  "genre": zod.string().nullable(),
+  "durationMinutes": zod.number().nullable(),
+  "ageRating": zod.string().nullable(),
+  "rating": zod.number().nullable(),
+  "sourceName": zod.string(),
+  "minPriceCents": zod.number().nullable(),
+  "cities": zod.array(zod.string()).describe('Distinct cities where this event has scheduled sessions.')
+})
+})
+
+
+/**
+ * @summary Delete a session (admin only, blocked while it has any orders)
+ */
+export const DeleteAdminSessionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteAdminSessionResponse = zod.void()
+
+
+/**
+ * @summary Update a ticket category's price (admin only)
+ */
+export const UpdateAdminTicketCategoryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+export const UpdateAdminTicketCategoryBody = zod.object({
+  "priceCents": zod.number().min(1)
+})
+
+export const UpdateAdminTicketCategoryResponse = zod.object({
+  "id": zod.number(),
+  "sessionId": zod.number(),
+  "name": zod.string(),
+  "priceCents": zod.number(),
+  "seatsTotal": zod.number(),
+  "seatsAvailable": zod.number()
+})
+
+
+/**
+ * @summary Block or unblock a seat so it cannot be purchased (admin only). Has no effect on reserved/sold seats.
+ */
+export const ToggleAdminSeatBlockParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ToggleAdminSeatBlockResponse = zod.object({
+  "id": zod.number(),
+  "sessionId": zod.number(),
+  "ticketCategoryId": zod.number(),
+  "rowLabel": zod.string(),
+  "seatNumber": zod.number(),
+  "status": zod.enum(['available', 'reserved', 'sold', 'blocked']),
+  "priceCents": zod.number(),
+  "categoryName": zod.string()
+})
 
 
 /**

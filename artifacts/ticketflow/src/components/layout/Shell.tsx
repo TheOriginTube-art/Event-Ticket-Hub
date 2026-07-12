@@ -155,7 +155,7 @@ function MobileNav({ location }: { location: string }) {
               <>
                 {user.isAdmin && (
                   <SheetClose asChild>
-                    <Link href="/admin/orders">
+                    <Link href="/admin">
                       <Button variant="outline" className="w-full h-11 justify-start gap-2 border-white/10">
                         <ShieldAlert className="w-4 h-4" />
                         Админ
@@ -240,7 +240,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             {isAuthLoading ? null : user ? (
               <>
                 {user.isAdmin && (
-                  <Link href="/admin/orders">
+                  <Link href="/admin">
                     <Button variant="outline" className="hidden md:flex rounded-full px-5 border-white/10 hover:border-primary/50 hover:bg-primary/10">
                       Админ
                     </Button>

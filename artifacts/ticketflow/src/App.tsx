@@ -16,6 +16,11 @@ import Register from '@/pages/Register';
 import Account from '@/pages/Account';
 import AdminOrders from '@/pages/admin/AdminOrders';
 import AdminSettings from '@/pages/admin/AdminSettings';
+import AdminDashboard from '@/pages/admin/AdminDashboard';
+import AdminEvents from '@/pages/admin/AdminEvents';
+import AdminEventSessions from '@/pages/admin/AdminEventSessions';
+import AdminVenues from '@/pages/admin/AdminVenues';
+import AdminUsers from '@/pages/admin/AdminUsers';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,7 +44,12 @@ function Router() {
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
         <Route path="/account" component={Account} />
+        <Route path="/admin" component={AdminDashboard} />
         <Route path="/admin/orders" component={AdminOrders} />
+        <Route path="/admin/events" component={AdminEvents} />
+        <Route path="/admin/events/:id/sessions" component={AdminEventSessions} />
+        <Route path="/admin/venues" component={AdminVenues} />
+        <Route path="/admin/users" component={AdminUsers} />
         <Route path="/admin/settings" component={AdminSettings} />
         <Route>
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center min-h-[50vh]">
