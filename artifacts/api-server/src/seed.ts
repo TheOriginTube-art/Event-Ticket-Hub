@@ -93,6 +93,7 @@ const eventDefs: EventDef[] = [
       { venueName: "Каро 11 Октябрь", hall: "Зал 3", daysFromNow: 1, hour: 19, minute: 0 },
       { venueName: "Каро 11 Октябрь", hall: "Зал 3", daysFromNow: 2, hour: 21, minute: 30 },
       { venueName: "Формула Кино Заневский", hall: "Зал 1", daysFromNow: 3, hour: 18, minute: 45 },
+      { venueName: "Совкино", hall: "Зал 2", daysFromNow: 2, hour: 19, minute: 30 },
     ],
   },
   {
@@ -110,6 +111,7 @@ const eventDefs: EventDef[] = [
     sessions: [
       { venueName: "Пионер", hall: "Зал 2", daysFromNow: 1, hour: 17, minute: 15 },
       { venueName: "Пионер", hall: "Зал 2", daysFromNow: 4, hour: 20, minute: 0 },
+      { venueName: "Совкино", hall: "Зал 1", daysFromNow: 4, hour: 17, minute: 45 },
     ],
   },
   {
@@ -241,6 +243,7 @@ const eventDefs: EventDef[] = [
     sessions: [
       { venueName: "Синема Парк Кольцо", hall: "Зал 2", daysFromNow: 2, hour: 21, minute: 0 },
       { venueName: "Киномакс Родина", hall: "Зал 1", daysFromNow: 4, hour: 22, minute: 30 },
+      { venueName: "Гигант", hall: "Малый зал", daysFromNow: 3, hour: 22, minute: 0 },
     ],
   },
   {
@@ -349,6 +352,7 @@ const additionalEventDefs: EventDef[] = [
     sessions: [
       { venueName: "Каро 11 Октябрь", hall: "Зал 2", daysFromNow: 1, hour: 16, minute: 20 },
       { venueName: "Пионер", hall: "Зал 1", daysFromNow: 3, hour: 20, minute: 30 },
+      { venueName: "Гигант", hall: "Большой зал", daysFromNow: 5, hour: 18, minute: 30 },
     ],
   },
   {
