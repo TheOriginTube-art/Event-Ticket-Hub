@@ -15,6 +15,7 @@ export type EventType = typeof EventType[keyof typeof EventType];
 export const EventType = {
   movie: 'movie',
   theater: 'theater',
+  concert: 'concert',
 } as const;
 
 export type EventSortOrder = typeof EventSortOrder[keyof typeof EventSortOrder];

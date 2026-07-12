@@ -33,7 +33,7 @@ type PriceTier = { name: string; priceCents: number; seatsTotal: number };
 type SessionDef = { venueName: string; hall: string; daysFromNow: number; hour: number; minute: number };
 type EventDef = {
   title: string;
-  type: "movie" | "theater";
+  type: "movie" | "theater" | "concert";
   description: string;
   posterUrl: string;
   genre: string;
@@ -54,6 +54,12 @@ const THEATER_TIERS: PriceTier[] = [
   { name: "Балкон", priceCents: 120000, seatsTotal: 60 },
   { name: "Партер", priceCents: 350000, seatsTotal: 40 },
   { name: "Ложа", priceCents: 550000, seatsTotal: 10 },
+];
+
+const CONCERT_TIERS: PriceTier[] = [
+  { name: "Танцпол", priceCents: 250000, seatsTotal: 70 },
+  { name: "Партер", priceCents: 450000, seatsTotal: 50 },
+  { name: "VIP-балкон", priceCents: 800000, seatsTotal: 20 },
 ];
 
 const venueDefs = [
@@ -675,6 +681,107 @@ const additionalVenueDefs = [
   { name: "Хабаровский краевой музыкальный театр", city: "Хабаровск", address: "улица Карла Маркса, 64" },
 ];
 
+/** Concert venues referenced by `concertEventDefs`. */
+const concertVenueDefs = [
+  { name: "Крокус Сити Холл", city: "Москва", address: "МКАД, 66 км, вл4с1, Мякинино" },
+  { name: "БКЗ Октябрьский", city: "Санкт-Петербург", address: "Лиговский проспект, 6" },
+  { name: "А2 Green Concert", city: "Санкт-Петербург", address: "проспект Медиков, 3" },
+  { name: "Казань Экспо", city: "Казань", address: "Оренбургский тракт, 8" },
+];
+
+/**
+ * Real touring concerts sourced from afisha listings (Афиша.ру, KP.ru,
+ * Ticketland) to seed the new "Концерты" event type alongside movies and
+ * theater. Inserted lazily by `seedConcertsIfMissing` (skips titles that
+ * already exist), so it's safe to run on an already-seeded database.
+ */
+const concertEventDefs: EventDef[] = [
+  {
+    title: "Руки Вверх! Юбилейный тур",
+    type: "concert",
+    description:
+      "Сергей Жуков и группа «Руки Вверх!» отмечают юбилей на большой сцене — все главные хиты devяностых и двухтысячных в новой концертной программе.",
+    posterUrl: "https://prostars.org/files/catalog/items/0/530x800/22/5e04ed3fb3999.png",
+    genre: "Поп",
+    durationMinutes: 120,
+    ageRating: "6+",
+    rating: 8.8,
+    sourceName: "KP.ru Афиша",
+    priceTiers: CONCERT_TIERS,
+    sessions: [{ venueName: "Крокус Сити Холл", hall: "Основной зал", daysFromNow: 13, hour: 20, minute: 0 }],
+  },
+  {
+    title: "Елена Ваенга. Большой концерт",
+    type: "concert",
+    description:
+      "Елена Ваенга представляет большую сольную программу — искренняя эстрада и авторские песни, ставшие визитной карточкой одной из самых ярких артисток страны.",
+    posterUrl: "https://kremlinpalace.org/images/events/1750163203.jpg",
+    genre: "Эстрада",
+    durationMinutes: 130,
+    ageRating: "16+",
+    rating: 9.0,
+    sourceName: "KP.ru Афиша",
+    priceTiers: CONCERT_TIERS,
+    sessions: [{ venueName: "БКЗ Октябрьский", hall: "Большой зал", daysFromNow: 3, hour: 19, minute: 0 }],
+  },
+  {
+    title: "Леонид Агутин с новой программой",
+    type: "concert",
+    description:
+      "Леонид Агутин исполнит новую программу вместе с бэндом — от джазовых баллад до самых узнаваемых хитов последних тридцати лет.",
+    posterUrl: "https://pic.rtbcdn.ru/video/2025-12-04/45/f8/45f84e2f341f9e5e6334ca9ff94df0f3.jpg",
+    genre: "Поп",
+    durationMinutes: 110,
+    ageRating: "6+",
+    rating: 8.7,
+    sourceName: "KP.ru Афиша",
+    priceTiers: CONCERT_TIERS,
+    sessions: [{ venueName: "Крокус Сити Холл", hall: "Основной зал", daysFromNow: 6, hour: 19, minute: 0 }],
+  },
+  {
+    title: "КняZz",
+    type: "concert",
+    description:
+      "Рок-группа КняZz — готик-рок с оркестровым размахом и театральной подачей в исполнении Андрея Лефлера и его команды.",
+    posterUrl: "https://amdm.ru/cs/images/artist/250/19376.jpg",
+    genre: "Рок",
+    durationMinutes: 100,
+    ageRating: "12+",
+    rating: 8.5,
+    sourceName: "KP.ru Афиша",
+    priceTiers: CONCERT_TIERS,
+    sessions: [{ venueName: "А2 Green Concert", hall: "Основная сцена", daysFromNow: 7, hour: 19, minute: 0 }],
+  },
+  {
+    title: "Мари Краймбрери",
+    type: "concert",
+    description:
+      "Мари Краймбрери исполнит свои главные хиты и новые песни в большом сольном концерте с полноценным живым звуком.",
+    posterUrl: "https://mkraimbrery.ru/wp-content/uploads/sites/15/mari-kraymbreri-afisha-i-bilety-na-kontsert.jpg",
+    genre: "Поп",
+    durationMinutes: 105,
+    ageRating: "12+",
+    rating: 8.6,
+    sourceName: "Mos-Kassir.ru",
+    priceTiers: CONCERT_TIERS,
+    sessions: [{ venueName: "Крокус Сити Холл", hall: "Основной зал", daysFromNow: 1, hour: 20, minute: 0 }],
+  },
+  {
+    title: "Олег Газманов",
+    type: "concert",
+    description:
+      "Олег Газманов представляет большую концертную программу из главных хитов десятилетий — «Морячка», «Есаул», «Москва» и многое другое.",
+    posterUrl: "https://gazmanov-oleg.ru/photos/gazmanov-taganrog.jpg",
+    genre: "Поп",
+    durationMinutes: 115,
+    ageRating: "6+",
+    rating: 8.4,
+    sourceName: "Afisha.org.ru",
+    priceTiers: CONCERT_TIERS,
+    sessions: [{ venueName: "Казань Экспо", hall: "Главный зал", daysFromNow: 4, hour: 21, minute: 0 }],
+  },
+];
+
 function sessionDate(daysFromNow: number, hour: number, minute: number): Date {
   const d = new Date();
   d.setDate(d.getDate() + daysFromNow);
@@ -853,4 +960,40 @@ export async function seedAdditionalEventsIfMissing(): Promise<void> {
     await insertEvent(evt, stripe, venueIdByName);
   }
   logger.info("Additional afisha events seed complete.");
+}
+
+/**
+ * Adds real touring concerts (see `concertEventDefs`) to seed the new
+ * "concert" event type, skipping any title that already exists. Safe to
+ * call every boot.
+ */
+export async function seedConcertsIfMissing(): Promise<void> {
+  const existingTitles = new Set((await db.select({ title: eventsTable.title }).from(eventsTable)).map((e) => e.title));
+  const toInsert = concertEventDefs.filter((evt) => !existingTitles.has(evt.title));
+  if (toInsert.length === 0) {
+    logger.info("Concert events already seeded, skipping.");
+    return;
+  }
+
+  let stripe: Awaited<ReturnType<typeof getUncachableStripeClient>> | null = null;
+  try {
+    stripe = await getUncachableStripeClient();
+  } catch (err) {
+    logger.warn({ err }, "Stripe is not connected -- seeding concerts without Stripe products/prices.");
+  }
+
+  const venues = await db.select().from(venuesTable);
+  const venueIdByName = new Map(venues.map((v) => [v.name, v.id]));
+
+  for (const v of concertVenueDefs) {
+    if (venueIdByName.has(v.name)) continue;
+    const [row] = await db.insert(venuesTable).values(v).returning();
+    if (row) venueIdByName.set(v.name, row.id);
+  }
+
+  logger.info(`Seeding ${toInsert.length} concert event(s)...`);
+  for (const evt of toInsert) {
+    await insertEvent(evt, stripe, venueIdByName);
+  }
+  logger.info("Concert events seed complete.");
 }

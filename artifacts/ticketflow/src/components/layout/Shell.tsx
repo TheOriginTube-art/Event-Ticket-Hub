@@ -127,6 +127,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <Link href="/events?type=theater" className={`text-sm font-medium transition-colors hover:text-primary ${location.includes('/events') && location.includes('theater') ? 'text-white' : 'text-muted-foreground'}`}>
               Театр
             </Link>
+            <Link href="/events?type=concert" className={`text-sm font-medium transition-colors hover:text-primary ${location.includes('/events') && location.includes('concert') ? 'text-white' : 'text-muted-foreground'}`}>
+              Концерты
+            </Link>
           </nav>
           
           <div className="flex items-center gap-3">
@@ -177,7 +180,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <span className="font-bold text-lg">TicketFlow</span>
             </Link>
             <p className="text-muted-foreground text-sm max-w-sm">
-              Ваш персональный проводник в мир кино и театра. Покупайте билеты без наценок и переплат в два клика.
+              Ваш персональный проводник в мир кино, театра и концертов. Покупайте билеты без наценок и переплат в два клика.
             </p>
           </div>
           <div>
@@ -185,6 +188,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><Link href="/events?type=movie" className="hover:text-primary transition-colors">Кино</Link></li>
               <li><Link href="/events?type=theater" className="hover:text-primary transition-colors">Спектакли</Link></li>
+              <li><Link href="/events?type=concert" className="hover:text-primary transition-colors">Концерты</Link></li>
               <li><Link href="/events" className="hover:text-primary transition-colors">Все мероприятия</Link></li>
             </ul>
           </div>

@@ -2,7 +2,7 @@ import { doublePrecision, integer, pgEnum, pgTable, serial, text, timestamp } fr
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const eventTypeEnum = pgEnum("event_type", ["movie", "theater"]);
+export const eventTypeEnum = pgEnum("event_type", ["movie", "theater", "concert"]);
 
 export const eventsTable = pgTable("events", {
   id: serial("id").primaryKey(),

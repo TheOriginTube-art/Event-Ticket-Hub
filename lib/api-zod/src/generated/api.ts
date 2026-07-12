@@ -44,7 +44,7 @@ export const ListVenuesResponse = zod.array(ListVenuesResponseItem)
  * @summary List events with optional filters
  */
 export const ListEventsQueryParams = zod.object({
-  "type": zod.enum(['movie', 'theater']).optional().describe('Filter by event type'),
+  "type": zod.enum(['movie', 'theater', 'concert']).optional().describe('Filter by event type'),
   "city": zod.coerce.string().optional().describe('Filter to events that have sessions in this city'),
   "search": zod.coerce.string().optional().describe('Search by title'),
   "sort": zod.enum(['dateAsc', 'priceAsc', 'priceDesc', 'ratingDesc']).optional().describe('Sort order')
@@ -53,7 +53,7 @@ export const ListEventsQueryParams = zod.object({
 export const ListEventsResponseItem = zod.object({
   "id": zod.number(),
   "title": zod.string(),
-  "type": zod.enum(['movie', 'theater']),
+  "type": zod.enum(['movie', 'theater', 'concert']),
   "posterUrl": zod.string().nullable(),
   "genre": zod.string().nullable(),
   "durationMinutes": zod.number().nullable(),
@@ -76,7 +76,7 @@ export const GetEventParams = zod.object({
 export const GetEventResponse = zod.object({
   "id": zod.number(),
   "title": zod.string(),
-  "type": zod.enum(['movie', 'theater']),
+  "type": zod.enum(['movie', 'theater', 'concert']),
   "description": zod.string().nullable(),
   "posterUrl": zod.string().nullable(),
   "genre": zod.string().nullable(),
@@ -129,7 +129,7 @@ export const GetSessionResponse = zod.object({
   "event": zod.object({
   "id": zod.number(),
   "title": zod.string(),
-  "type": zod.enum(['movie', 'theater']),
+  "type": zod.enum(['movie', 'theater', 'concert']),
   "posterUrl": zod.string().nullable(),
   "genre": zod.string().nullable(),
   "durationMinutes": zod.number().nullable(),
@@ -204,7 +204,7 @@ export const GetOrderResponse = zod.object({
   "event": zod.object({
   "id": zod.number(),
   "title": zod.string(),
-  "type": zod.enum(['movie', 'theater']),
+  "type": zod.enum(['movie', 'theater', 'concert']),
   "posterUrl": zod.string().nullable(),
   "genre": zod.string().nullable(),
   "durationMinutes": zod.number().nullable(),
@@ -252,7 +252,7 @@ export const GetMyOrdersResponseItem = zod.object({
   "event": zod.object({
   "id": zod.number(),
   "title": zod.string(),
-  "type": zod.enum(['movie', 'theater']),
+  "type": zod.enum(['movie', 'theater', 'concert']),
   "posterUrl": zod.string().nullable(),
   "genre": zod.string().nullable(),
   "durationMinutes": zod.number().nullable(),
@@ -368,7 +368,7 @@ export const MarkOrderPaidResponse = zod.object({
   "event": zod.object({
   "id": zod.number(),
   "title": zod.string(),
-  "type": zod.enum(['movie', 'theater']),
+  "type": zod.enum(['movie', 'theater', 'concert']),
   "posterUrl": zod.string().nullable(),
   "genre": zod.string().nullable(),
   "durationMinutes": zod.number().nullable(),
@@ -443,7 +443,7 @@ export const ListAdminOrdersResponseItem = zod.object({
   "event": zod.object({
   "id": zod.number(),
   "title": zod.string(),
-  "type": zod.enum(['movie', 'theater']),
+  "type": zod.enum(['movie', 'theater', 'concert']),
   "posterUrl": zod.string().nullable(),
   "genre": zod.string().nullable(),
   "durationMinutes": zod.number().nullable(),
@@ -496,7 +496,7 @@ export const ConfirmAdminOrderResponse = zod.object({
   "event": zod.object({
   "id": zod.number(),
   "title": zod.string(),
-  "type": zod.enum(['movie', 'theater']),
+  "type": zod.enum(['movie', 'theater', 'concert']),
   "posterUrl": zod.string().nullable(),
   "genre": zod.string().nullable(),
   "durationMinutes": zod.number().nullable(),
@@ -548,7 +548,7 @@ export const RejectAdminOrderResponse = zod.object({
   "event": zod.object({
   "id": zod.number(),
   "title": zod.string(),
-  "type": zod.enum(['movie', 'theater']),
+  "type": zod.enum(['movie', 'theater', 'concert']),
   "posterUrl": zod.string().nullable(),
   "genre": zod.string().nullable(),
   "durationMinutes": zod.number().nullable(),
@@ -650,7 +650,7 @@ export const GetHomeHighlightsResponse = zod.object({
   "featuredEvents": zod.array(zod.object({
   "id": zod.number(),
   "title": zod.string(),
-  "type": zod.enum(['movie', 'theater']),
+  "type": zod.enum(['movie', 'theater', 'concert']),
   "posterUrl": zod.string().nullable(),
   "genre": zod.string().nullable(),
   "durationMinutes": zod.number().nullable(),

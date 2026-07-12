@@ -11,9 +11,9 @@ tags:
   - name: health
     description: Health operations
   - name: events
-    description: Movie and theater events aggregated from partner listings
+    description: Movie, theater and concert events aggregated from partner listings
   - name: venues
-    description: Cinemas and theaters
+    description: Cinemas, theaters and concert venues
   - name: sessions
     description: Showtimes/sessions for events
   - name: checkout
@@ -613,7 +613,7 @@ components:
 
     EventType:
       type: string
-      enum: [movie, theater]
+      enum: [movie, theater, concert]
 
     EventSortOrder:
       type: string

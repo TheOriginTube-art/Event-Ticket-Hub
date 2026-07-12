@@ -2,13 +2,14 @@ import { useState, useEffect } from "react";
 import { useListEvents } from "@workspace/api-client-react";
 import type { EventSortOrder } from "@workspace/api-zod";
 import { Link, useLocation } from "wouter";
-import { Search, Film, Theater, Star, MapPin, SlidersHorizontal } from "lucide-react";
+import { Search, Film, Theater, Music, Star, MapPin, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRubles } from "@/lib/utils";
 import { useCity } from "@/lib/city-context";
+import { EVENT_TYPE_BADGE_VARIANT, EVENT_TYPE_LABELS } from "@/lib/event-types";
 
 const SORT_OPTIONS: { value: EventSortOrder | ""; label: string }[] = [
   { value: "", label: "По умолчанию" },
@@ -23,8 +24,8 @@ export default function Events() {
   const searchParams = new URLSearchParams(window.location.search);
   const { city: globalCity, setCity: setGlobalCity } = useCity();
   
-  const typeParam = (searchParams.get("type") ?? undefined) as "movie" | "theater" | undefined;
-  const [type, setType] = useState<"movie" | "theater" | undefined>(typeParam);
+  const typeParam = (searchParams.get("type") ?? undefined) as "movie" | "theater" | "concert" | undefined;
+  const [type, setType] = useState<"movie" | "theater" | "concert" | undefined>(typeParam);
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [debouncedSearch, setDebouncedSearch] = useState(search);
   const [sort, setSort] = useState<EventSortOrder | "">((searchParams.get("sort") as EventSortOrder) || "");
@@ -55,7 +56,7 @@ export default function Events() {
     sort: sort || undefined,
   });
 
-  const handleTypeChange = (newType: "movie" | "theater" | undefined) => {
+  const handleTypeChange = (newType: "movie" | "theater" | "concert" | undefined) => {
     setType(newType);
     const params = new URLSearchParams(window.location.search);
     if (newType) params.set("type", newType);
@@ -89,6 +90,12 @@ export default function Events() {
             className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${type === 'theater' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
           >
             Театр
+          </button>
+          <button
+            onClick={() => handleTypeChange("concert")}
+            className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${type === 'concert' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            Концерты
           </button>
         </div>
       </div>
@@ -172,14 +179,14 @@ export default function Events() {
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-secondary">
-                        {event.type === 'movie' ? <Film className="w-12 h-12 text-muted" /> : <Theater className="w-12 h-12 text-muted" />}
+                        {event.type === 'movie' ? <Film className="w-12 h-12 text-muted" /> : event.type === 'theater' ? <Theater className="w-12 h-12 text-muted" /> : <Music className="w-12 h-12 text-muted" />}
                       </div>
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity" />
                     
                     <div className="absolute top-3 left-3 flex gap-2">
-                      <Badge variant={event.type === 'movie' ? 'cinema' : 'theater'} className="backdrop-blur-md bg-background/50 border-none">
-                        {event.type === 'movie' ? 'Кино' : 'Театр'}
+                      <Badge variant={EVENT_TYPE_BADGE_VARIANT[event.type]} className="backdrop-blur-md bg-background/50 border-none">
+                        {EVENT_TYPE_LABELS[event.type]}
                       </Badge>
                     </div>
                     

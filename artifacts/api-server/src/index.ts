@@ -1,7 +1,7 @@
 import { runMigrations } from "stripe-replit-sync";
 import app from "./app";
 import { logger } from "./lib/logger";
-import { seedIfEmpty, seedAdditionalEventsIfMissing } from "./seed";
+import { seedIfEmpty, seedAdditionalEventsIfMissing, seedConcertsIfMissing } from "./seed";
 import { seedPaymentSettingsIfEmpty } from "./lib/paymentSettingsSeed";
 import { getStripeSync } from "./stripeClient";
 
@@ -83,6 +83,12 @@ try {
   await seedAdditionalEventsIfMissing();
 } catch (err) {
   logger.error({ err }, "Failed to seed additional afisha events");
+}
+
+try {
+  await seedConcertsIfMissing();
+} catch (err) {
+  logger.error({ err }, "Failed to seed concert events");
 }
 
 app.listen(port, (err) => {

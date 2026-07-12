@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SeatMap } from "@/components/SeatMap";
 import { useAuth } from "@/lib/auth-context";
 import { useCity } from "@/lib/city-context";
+import { EVENT_TYPE_BADGE_VARIANT, EVENT_TYPE_LABELS } from "@/lib/event-types";
 
 export default function EventDetail() {
   const { id } = useParams();
@@ -88,8 +89,8 @@ export default function EventDetail() {
               </div>
             )}
             <div className="absolute top-4 left-4">
-              <Badge variant={event.type === 'movie' ? 'cinema' : 'theater'} className="backdrop-blur-md bg-background/50 border-none text-sm px-3 py-1">
-                {event.type === 'movie' ? 'Кино' : 'Театр'}
+              <Badge variant={EVENT_TYPE_BADGE_VARIANT[event.type]} className="backdrop-blur-md bg-background/50 border-none text-sm px-3 py-1">
+                {EVENT_TYPE_LABELS[event.type]}
               </Badge>
             </div>
           </div>

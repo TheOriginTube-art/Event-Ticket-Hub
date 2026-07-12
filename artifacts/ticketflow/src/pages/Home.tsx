@@ -1,11 +1,12 @@
 import { useGetHomeHighlights } from "@workspace/api-client-react";
 import { Link } from "wouter";
-import { Film, Theater, ArrowRight, Star, Clock, MapPin } from "lucide-react";
+import { Film, Theater, Music, ArrowRight, Star, Clock, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRubles } from "@/lib/utils";
 import { useCity } from "@/lib/city-context";
+import { EVENT_TYPE_BADGE_VARIANT, EVENT_TYPE_LABELS } from "@/lib/event-types";
 
 export default function Home() {
   const { city } = useCity();
@@ -31,7 +32,7 @@ export default function Home() {
             </span>
           </h1>
           <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
-            Кино и театр без бесконечных поисков. Собрали все сеансы, чтобы вы могли купить билет прямо сейчас.
+            Кино, театр и концерты без бесконечных поисков. Собрали все сеансы, чтобы вы могли купить билет прямо сейчас.
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -45,6 +46,12 @@ export default function Home() {
               <Button size="lg" variant="outline" className="w-full gap-2 rounded-full border-white/10 hover:bg-white/5">
                 <Theater className="w-5 h-5" />
                 В театр
+              </Button>
+            </Link>
+            <Link href="/events?type=concert" className="w-full sm:w-auto">
+              <Button size="lg" variant="outline" className="w-full gap-2 rounded-full border-white/10 hover:bg-white/5">
+                <Music className="w-5 h-5" />
+                На концерт
               </Button>
             </Link>
           </div>
@@ -117,14 +124,14 @@ export default function Home() {
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-secondary">
-                      {event.type === 'movie' ? <Film className="w-12 h-12 text-muted" /> : <Theater className="w-12 h-12 text-muted" />}
+                      {event.type === 'movie' ? <Film className="w-12 h-12 text-muted" /> : event.type === 'theater' ? <Theater className="w-12 h-12 text-muted" /> : <Music className="w-12 h-12 text-muted" />}
                     </div>
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity" />
                   
                   <div className="absolute top-3 left-3 flex gap-2">
-                    <Badge variant={event.type === 'movie' ? 'cinema' : 'theater'} className="backdrop-blur-md bg-background/50 border-none">
-                      {event.type === 'movie' ? 'Кино' : 'Театр'}
+                    <Badge variant={EVENT_TYPE_BADGE_VARIANT[event.type]} className="backdrop-blur-md bg-background/50 border-none">
+                      {EVENT_TYPE_LABELS[event.type]}
                     </Badge>
                   </div>
                   

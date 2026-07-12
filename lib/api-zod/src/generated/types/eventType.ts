@@ -12,4 +12,5 @@ export type EventType = typeof EventType[keyof typeof EventType];
 export const EventType = {
   movie: 'movie',
   theater: 'theater',
+  concert: 'concert',
 } as const;

@@ -16,6 +16,7 @@ const badgeVariants = cva(
         outline: "text-foreground",
         cinema: "border-transparent bg-blue-500/20 text-blue-400",
         theater: "border-transparent bg-purple-500/20 text-purple-400",
+        concert: "border-transparent bg-pink-500/20 text-pink-400",
       },
     },
     defaultVariants: {
