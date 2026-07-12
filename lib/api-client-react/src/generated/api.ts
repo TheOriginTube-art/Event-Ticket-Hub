@@ -31,6 +31,7 @@ import type {
   EventInput,
   EventSummary,
   ExportAdminOrdersParams,
+  FillRandomSeats200,
   GetAdminAnalyticsParams,
   GetHomeHighlightsParams,
   HealthStatus,
@@ -2789,6 +2790,77 @@ export const useToggleAdminSeatBlock = <TError = ErrorType<ErrorEnvelope | void>
         TContext
       > => {
       return useMutation(getToggleAdminSeatBlockMutationOptions(options));
+    }
+
+export const getFillRandomSeatsUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/sessions/${id}/fill-random`
+}
+
+/**
+ * @summary Randomly mark a batch of still-available seats as sold, scattered across the hall, as if they were just bought (admin only)
+ */
+export const fillRandomSeats = async (id: number, options?: RequestInit): Promise<FillRandomSeats200> => {
+
+  return customFetch<FillRandomSeats200>(getFillRandomSeatsUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getFillRandomSeatsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof fillRandomSeats>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof fillRandomSeats>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['fillRandomSeats'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof fillRandomSeats>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  fillRandomSeats(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type FillRandomSeatsMutationResult = NonNullable<Awaited<ReturnType<typeof fillRandomSeats>>>
+
+    export type FillRandomSeatsMutationError = ErrorType<void>
+
+    /**
+ * @summary Randomly mark a batch of still-available seats as sold, scattered across the hall, as if they were just bought (admin only)
+ */
+export const useFillRandomSeats = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof fillRandomSeats>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof fillRandomSeats>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getFillRandomSeatsMutationOptions(options));
     }
 
 export const getConfirmAdminOrderUrl = (id: number,) => {

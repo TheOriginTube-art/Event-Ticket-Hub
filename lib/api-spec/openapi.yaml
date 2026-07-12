@@ -883,6 +883,35 @@ paths:
         "404":
           description: Seat not found
 
+  /admin/sessions/{id}/fill-random:
+    post:
+      operationId: fillRandomSeats
+      tags: [admin]
+      summary: Randomly mark a batch of still-available seats as sold, scattered across the hall, as if they were just bought (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Number of seats filled
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [filled]
+                properties:
+                  filled:
+                    type: integer
+        "401":
+          description: Not authenticated
+        "403":
+          description: Admin access required
+        "404":
+          description: Session not found
+
   /admin/orders/{id}/confirm:
     post:
       operationId: confirmAdminOrder

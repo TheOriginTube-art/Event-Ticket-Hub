@@ -448,6 +448,10 @@ export type GetAdminAnalyticsParams = {
 days?: number;
 };
 
+export type FillRandomSeats200 = {
+  filled: number;
+};
+
 export type GetHomeHighlightsParams = {
 city?: string;
 };

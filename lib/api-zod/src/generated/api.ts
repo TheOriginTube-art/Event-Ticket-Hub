@@ -924,6 +924,18 @@ export const ToggleAdminSeatBlockResponse = zod.object({
 
 
 /**
+ * @summary Randomly mark a batch of still-available seats as sold, scattered across the hall, as if they were just bought (admin only)
+ */
+export const FillRandomSeatsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const FillRandomSeatsResponse = zod.object({
+  "filled": zod.number()
+})
+
+
+/**
  * @summary Confirm a manually-verified Ozon Bank payment (admin only)
  */
 export const ConfirmAdminOrderParams = zod.object({

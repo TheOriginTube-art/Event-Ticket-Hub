@@ -23,10 +23,12 @@ import {
   UpdateAdminTicketCategoryResponse,
   ToggleAdminSeatBlockParams,
   ToggleAdminSeatBlockResponse,
+  FillRandomSeatsParams,
 } from "@workspace/api-zod";
 import { requireAdmin } from "../lib/auth";
 import { buildSeatsForCategory } from "../lib/seatGrid";
 import { getEventWithSessions } from "../lib/eventQueries";
+import { fillSessionRandomly } from "../lib/seatDemandSimulator";
 
 const router: IRouter = Router();
 
@@ -204,6 +206,23 @@ router.delete("/admin/sessions/:id", requireAdmin, async (req, res): Promise<voi
 
   await db.delete(sessionsTable).where(eq(sessionsTable.id, params.data.id));
   res.status(204).send();
+});
+
+router.post("/admin/sessions/:id/fill-random", requireAdmin, async (req, res): Promise<void> => {
+  const params = FillRandomSeatsParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [existing] = await db.select().from(sessionsTable).where(eq(sessionsTable.id, params.data.id));
+  if (!existing) {
+    res.status(404).json({ error: "Session not found" });
+    return;
+  }
+
+  const filled = await fillSessionRandomly(params.data.id);
+  res.json({ filled });
 });
 
 router.patch("/admin/ticket-categories/:id", requireAdmin, async (req, res): Promise<void> => {

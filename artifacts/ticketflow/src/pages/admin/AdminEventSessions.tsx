@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, Link } from "wouter";
-import { Loader2, ArrowLeft, Plus, Pencil, Trash2, Ban, CheckCircle2 } from "lucide-react";
+import { Loader2, ArrowLeft, Plus, Pencil, Trash2, Ban, CheckCircle2, Shuffle } from "lucide-react";
 import {
   useListAdminEventSessions,
   getListAdminEventSessionsQueryKey,
@@ -11,6 +11,7 @@ import {
   useDeleteAdminSession,
   useUpdateAdminTicketCategory,
   useToggleAdminSeatBlock,
+  useFillRandomSeats,
   useGetEvent,
   getGetEventQueryKey,
   useGetSessionSeats,
@@ -348,9 +349,18 @@ function SeatMapEditor({ sessionId }: { sessionId: number }) {
   });
   const toggleMutation = useToggleAdminSeatBlock();
   const priceMutation = useUpdateAdminTicketCategory();
+  const fillRandomMutation = useFillRandomSeats();
   const [priceEdits, setPriceEdits] = useState<Record<number, string>>({});
+  const [fillMessage, setFillMessage] = useState<string | null>(null);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: getGetSessionSeatsQueryKey(sessionId) });
+
+  const fillRandomly = async () => {
+    setFillMessage(null);
+    const result = await fillRandomMutation.mutateAsync({ id: sessionId });
+    refresh();
+    setFillMessage(result.filled > 0 ? `Продано мест: ${result.filled}` : "Свободных мест не осталось");
+  };
 
   if (isLoading || !seats) {
     return (
@@ -390,6 +400,23 @@ function SeatMapEditor({ sessionId }: { sessionId: number }) {
 
   return (
     <div className="mt-4 pt-4 border-t border-white/5 space-y-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 border-white/10"
+          disabled={fillRandomMutation.isPending}
+          onClick={fillRandomly}
+        >
+          {fillRandomMutation.isPending ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Shuffle className="w-3.5 h-3.5" />
+          )}
+          Заполнить рандомно
+        </Button>
+        {fillMessage && <span className="text-xs text-muted-foreground">{fillMessage}</span>}
+      </div>
       {[...byCategory.entries()].map(([categoryName, categorySeats]) => {
         const ticketCategoryId = categorySeats[0]!.ticketCategoryId;
         return (

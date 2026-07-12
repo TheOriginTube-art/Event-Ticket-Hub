@@ -22,6 +22,7 @@ export * from './eventSummary';
 export * from './eventType';
 export * from './exportAdminOrdersParams';
 export * from './exportAdminOrdersStatus';
+export * from './fillRandomSeats200';
 export * from './getAdminAnalyticsParams';
 export * from './getHomeHighlightsParams';
 export * from './healthStatus';

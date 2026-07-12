@@ -47,7 +47,7 @@ function shuffle<T>(items: T[]): T[] {
   return arr;
 }
 
-async function fillSessionRandomly(sessionId: number): Promise<number> {
+export async function fillSessionRandomly(sessionId: number): Promise<number> {
   const seats = await db
     .select({
       id: seatsTable.id,
