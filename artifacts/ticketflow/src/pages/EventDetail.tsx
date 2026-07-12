@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "wouter";
 import { useGetEvent, useGetSession, useGetSessionSeats, useCreateCheckout } from "@workspace/api-client-react";
 import type { Seat } from "@workspace/api-zod";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SeatMap } from "@/components/SeatMap";
 import { useAuth } from "@/lib/auth-context";
+import { useCity } from "@/lib/city-context";
 
 export default function EventDetail() {
   const { id } = useParams();
@@ -18,14 +19,30 @@ export default function EventDetail() {
   const { data: event, isLoading: isEventLoading } = useGetEvent(eventId);
   
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
-  
+
+  const { city } = useCity();
+  // Locally overrides the global city filter on this page only, when the user
+  // explicitly asks to see sessions in every city for this event.
+  const [showAllCities, setShowAllCities] = useState(false);
+
+  // Re-apply the city filter whenever the global city or the viewed event changes.
+  useEffect(() => {
+    setShowAllCities(false);
+  }, [city, eventId]);
+
+  const allSessions = event?.sessions ?? [];
+  const cityFilteredSessions = city ? allSessions.filter((s) => s.venue.city === city) : allSessions;
+  const isCityFilterActive = Boolean(city) && !showAllCities;
+  const sessionsToShow = isCityFilterActive ? cityFilteredSessions : allSessions;
+  const hasSessionsInOtherCities = isCityFilterActive && cityFilteredSessions.length === 0 && allSessions.length > 0;
+
   // Group sessions by date
-  const groupedSessions = event?.sessions.reduce((acc, session) => {
+  const groupedSessions = sessionsToShow.reduce((acc, session) => {
     const date = session.startsAt.split('T')[0];
     if (!acc[date]) acc[date] = [];
     acc[date].push(session);
     return acc;
-  }, {} as Record<string, typeof event.sessions>) || {};
+  }, {} as Record<string, typeof sessionsToShow>);
   
   // Sort dates
   const sortedDates = Object.keys(groupedSessions).sort();
@@ -118,9 +135,33 @@ export default function EventDetail() {
           </div>
 
           <div className="border-t border-white/5 pt-8">
-            <h2 className="text-2xl font-bold mb-6">Расписание сеансов</h2>
-            
-            {sortedDates.length === 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+              <h2 className="text-2xl font-bold">Расписание сеансов</h2>
+              {isCityFilterActive && cityFilteredSessions.length > 0 && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <MapPin className="w-4 h-4 text-primary shrink-0" />
+                  <span>Показаны сеансы в городе «{city}»</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllCities(true)}
+                    className="text-primary hover:underline font-medium"
+                  >
+                    Показать все города
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {hasSessionsInOtherCities ? (
+              <div className="bg-card border border-white/5 rounded-xl p-8 text-center space-y-4">
+                <p className="text-muted-foreground">
+                  В городе «{city}» нет сеансов этого мероприятия.
+                </p>
+                <Button variant="outline" className="border-white/10" onClick={() => setShowAllCities(true)}>
+                  Показать сеансы в других городах
+                </Button>
+              </div>
+            ) : sortedDates.length === 0 ? (
               <div className="bg-card border border-white/5 rounded-xl p-8 text-center">
                 <p className="text-muted-foreground">Нет доступных сеансов</p>
               </div>
