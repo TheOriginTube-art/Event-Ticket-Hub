@@ -596,6 +596,71 @@ const additionalEventDefs: EventDef[] = [
       { venueName: "Театр Наций", hall: "Основная сцена", daysFromNow: 16, hour: 19, minute: 0 },
     ],
   },
+  {
+    title: "История игрушек 5",
+    type: "movie",
+    description:
+      "Пятая часть легендарной франшизы Pixar — Вуди, Баз Лайтер и их друзья узнают, что смартфоны и планшеты стали новыми любимцами детей, и отправляются в трогательное приключение, чтобы доказать: настоящая дружба важнее любых гаджетов.",
+    posterUrl: "https://kino-teatr.ua/public/main/films/2026-04/x2_poster_69d27d2b93468.jpg",
+    genre: "Мультфильм",
+    durationMinutes: 100,
+    ageRating: "6+",
+    rating: 7.5,
+    sourceName: "Dvhab.ru",
+    priceTiers: MOVIE_TIERS,
+    sessions: [
+      { venueName: "Совкино", hall: "Зал 1", daysFromNow: 0, hour: 15, minute: 0 },
+      { venueName: "Гигант", hall: "Большой зал", daysFromNow: 1, hour: 17, minute: 30 },
+    ],
+  },
+  {
+    title: "Живая ярость",
+    type: "movie",
+    description:
+      "Когда дочь мастера-ремесленника Ван Вэя похищает преступная группировка, тот самостоятельно отправляется на её поиски. Его единственным союзником становится Навин — неутомимый журналист, чья жена таинственно исчезла. Мужчинам из разных слоёв общества предстоит объединиться, чтобы вернуть близких.",
+    posterUrl: "https://resizer.mail.ru/p/66d42bfd-219d-53cb-a188-8099a82efb42/AQACiWS69HpXo8nOQn2yT6wa3l4C_u9duir_decE0FL8cPIK_H_igLNCs4BVlgKBvtebR451KqhT1U3nDlKkQ4rPSBk.jpg",
+    genre: "Боевик",
+    durationMinutes: 110,
+    ageRating: "18+",
+    rating: 8.3,
+    sourceName: "Newslab.ru",
+    priceTiers: MOVIE_TIERS,
+    sessions: [
+      { venueName: "Гигант", hall: "Малый зал", daysFromNow: 2, hour: 21, minute: 0 },
+    ],
+  },
+  {
+    title: "Женщины Сергея Есенина, или Любовь хулигана",
+    type: "theater",
+    description:
+      "Документальный спектакль, основанный на реальных событиях из жизни великого русского поэта Сергея Есенина и женщин, ставших его музами — драматичная история любви и творчества на фоне бурной эпохи.",
+    posterUrl: "https://kirovdramteatr.ru/media/show/164_f0eefd04bbfd4c85706758da94a553.jpg",
+    genre: "Документальный спектакль",
+    durationMinutes: 120,
+    ageRating: "16+",
+    rating: 8.8,
+    sourceName: "Habdrama.ru",
+    priceTiers: THEATER_TIERS,
+    sessions: [
+      { venueName: "Хабаровский краевой театр драмы", hall: "Большая сцена", daysFromNow: 0, hour: 18, minute: 0 },
+    ],
+  },
+  {
+    title: "Сильва",
+    type: "theater",
+    description:
+      "Оперетта Имре Кальмана о непростой любви оперной дивы и аристократа, готового ради избранницы бросить вызов сословным предрассудкам — одна из самых красивых и мелодичных опереточных историй XX века.",
+    posterUrl: "https://www.belcanto.ru/media/images/composition/16080416.jpg",
+    genre: "Оперетта",
+    durationMinutes: 140,
+    ageRating: "12+",
+    rating: 8.6,
+    sourceName: "Muzteatrkhv.ru",
+    priceTiers: THEATER_TIERS,
+    sessions: [
+      { venueName: "Хабаровский краевой музыкальный театр", hall: "Основная сцена", daysFromNow: 5, hour: 19, minute: 0 },
+    ],
+  },
 ];
 
 /** Extra venues referenced by `additionalEventDefs` that aren't in the original `venueDefs`. */
@@ -604,6 +669,10 @@ const additionalVenueDefs = [
   { name: "Александринский театр", city: "Санкт-Петербург", address: "площадь Островского, 6" },
   { name: "МДМ", city: "Москва", address: "Комсомольский проспект, 28" },
   { name: "Театр Наций", city: "Москва", address: "улица Петровка, 3" },
+  { name: "Совкино", city: "Хабаровск", address: "улица Муравьева-Амурского, 34" },
+  { name: "Гигант", city: "Хабаровск", address: "улица Муравьева-Амурского, 19" },
+  { name: "Хабаровский краевой театр драмы", city: "Хабаровск", address: "улица Дзержинского, 44" },
+  { name: "Хабаровский краевой музыкальный театр", city: "Хабаровск", address: "улица Карла Маркса, 64" },
 ];
 
 function sessionDate(daysFromNow: number, hour: number, minute: number): Date {
