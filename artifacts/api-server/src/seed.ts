@@ -607,7 +607,7 @@ const additionalEventDefs: EventDef[] = [
     type: "movie",
     description:
       "Пятая часть легендарной франшизы Pixar — Вуди, Баз Лайтер и их друзья узнают, что смартфоны и планшеты стали новыми любимцами детей, и отправляются в трогательное приключение, чтобы доказать: настоящая дружба важнее любых гаджетов.",
-    posterUrl: "https://kino-teatr.ua/public/main/films/2026-04/x2_poster_69d27d2b93468.jpg",
+    posterUrl: "https://cdn.moviefone.com/admin-uploads/highlights/images/toy-story-5-official-poster_1771524686.webp",
     genre: "Мультфильм",
     durationMinutes: 100,
     ageRating: "6+",
