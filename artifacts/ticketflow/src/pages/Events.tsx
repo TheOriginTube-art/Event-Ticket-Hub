@@ -84,38 +84,38 @@ export default function Events() {
           <p className="text-muted-foreground">Билеты на лучшие события в городе</p>
         </div>
         
-        <div className="flex bg-secondary p-1 rounded-lg w-full md:w-auto">
+        <div className="flex bg-secondary p-1 rounded-lg w-full md:w-auto overflow-x-auto">
           <button
             onClick={() => handleTypeChange(undefined)}
-            className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${!type ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            className={`flex-1 md:flex-none min-h-11 px-3 sm:px-6 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${!type ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
           >
             Все
           </button>
           <button
             onClick={() => handleTypeChange("movie")}
-            className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${type === 'movie' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            className={`flex-1 md:flex-none min-h-11 px-3 sm:px-6 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${type === 'movie' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
           >
             Кино
           </button>
           <button
             onClick={() => handleTypeChange("theater")}
-            className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${type === 'theater' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            className={`flex-1 md:flex-none min-h-11 px-3 sm:px-6 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${type === 'theater' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
           >
             Театр
           </button>
           <button
             onClick={() => handleTypeChange("concert")}
-            className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${type === 'concert' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            className={`flex-1 md:flex-none min-h-11 px-3 sm:px-6 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${type === 'concert' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
           >
             Концерты
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-8">
         {/* Filters Sidebar */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-card border border-white/5 rounded-xl p-5 space-y-6 sticky top-24">
+          <div className="bg-card border border-white/5 rounded-xl p-5 space-y-6 lg:sticky lg:top-24">
             <div className="flex items-center gap-2 font-semibold pb-2 border-b border-white/5">
               <SlidersHorizontal className="w-4 h-4" />
               Фильтры
@@ -127,7 +127,7 @@ export default function Events() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input 
                   placeholder="Название события..." 
-                  className="pl-9 bg-background/50 border-white/10"
+                  className="pl-9 bg-background/50 border-white/10 h-11"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />

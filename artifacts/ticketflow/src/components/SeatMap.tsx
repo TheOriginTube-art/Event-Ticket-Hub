@@ -136,7 +136,7 @@ export function SeatMap({ seats, selectedSeatIds, onToggleSeat, maxSelectable }:
                         onBlur={() => hideSeatTooltip(seat.id)}
                         onTouchStart={() => handleTouchStart(seat.id)}
                         className={`
-                          w-8 h-8 sm:w-7 sm:h-7 rounded-[5px] text-[10px] font-medium flex items-center justify-center transition-all shrink-0
+                          w-9 h-9 sm:w-7 sm:h-7 rounded-[6px] sm:rounded-[5px] text-xs sm:text-[10px] font-medium flex items-center justify-center transition-all shrink-0 touch-manipulation
                           ${
                             isSold
                               ? "bg-white/[0.06] text-white/25 cursor-not-allowed"

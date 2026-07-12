@@ -143,14 +143,13 @@ export default function AdminOrders() {
                   </div>
                 </div>
 
-                <div className="flex flex-col items-end gap-3">
-                  <div className="text-xl font-bold">{formatRubles(order.totalAmountCents)}</div>
+                <div className="flex flex-col items-stretch sm:items-end gap-3 w-full sm:w-auto">
+                  <div className="text-xl font-bold sm:text-right">{formatRubles(order.totalAmountCents)}</div>
                   {(order.status === "pending" || order.status === "awaiting_confirmation") && (
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                       <Button
-                        size="sm"
                         variant="outline"
-                        className="gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+                        className="gap-1.5 h-11 border-destructive/30 text-destructive hover:bg-destructive/10"
                         disabled={rejectMutation.isPending}
                         onClick={() => rejectMutation.mutate({ id: order.id }, { onSuccess: refresh })}
                       >
@@ -158,8 +157,7 @@ export default function AdminOrders() {
                         Отклонить
                       </Button>
                       <Button
-                        size="sm"
-                        className="gap-1.5"
+                        className="gap-1.5 h-11"
                         disabled={confirmMutation.isPending}
                         onClick={() => confirmMutation.mutate({ id: order.id }, { onSuccess: refresh })}
                       >

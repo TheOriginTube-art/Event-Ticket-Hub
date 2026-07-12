@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
-import { Ticket, Search, MapPin, ChevronDown, Check, User } from "lucide-react";
+import { Ticket, Search, MapPin, ChevronDown, Check, User, Menu, ShieldAlert, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useHealthCheck, useGetEvent, getGetEventQueryKey } from "@workspace/api-client-react";
 import { useCity } from "@/lib/city-context";
@@ -101,6 +102,104 @@ function RefundLink() {
   );
 }
 
+const NAV_LINKS = [
+  { href: "/", label: "Главная", match: (loc: string) => loc === "/" },
+  { href: "/events?type=movie", label: "Кино", match: (loc: string) => loc.includes("/events") && loc.includes("movie") },
+  { href: "/events?type=theater", label: "Театр", match: (loc: string) => loc.includes("/events") && loc.includes("theater") },
+  { href: "/events?type=concert", label: "Концерты", match: (loc: string) => loc.includes("/events") && loc.includes("concert") },
+];
+
+function MobileNav({ location }: { location: string }) {
+  const { user, isLoading: isAuthLoading, logout } = useAuth();
+  const [, setLocation] = useLocation();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button variant="ghost" size="icon" className="rounded-full md:hidden h-11 w-11" aria-label="Открыть меню">
+          <Menu className="w-6 h-6" />
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="right" className="w-[85%] max-w-xs bg-[#101014] border-white/10 flex flex-col p-0">
+        <SheetHeader className="p-5 border-b border-white/5 text-left">
+          <SheetTitle className="flex items-center gap-2">
+            <Ticket className="w-5 h-5 text-primary" />
+            TicketFlow
+          </SheetTitle>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-6">
+          <nav className="flex flex-col gap-1">
+            {NAV_LINKS.map((link) => (
+              <SheetClose asChild key={link.href}>
+                <Link
+                  href={link.href}
+                  className={`min-h-11 flex items-center px-3 -mx-3 rounded-lg text-base font-medium transition-colors ${
+                    link.match(location) ? "text-white bg-white/5" : "text-muted-foreground hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              </SheetClose>
+            ))}
+          </nav>
+
+          <div className="space-y-2">
+            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground px-1">Город</div>
+            <CitySelector />
+          </div>
+
+          <div className="mt-auto flex flex-col gap-2 pt-4 border-t border-white/5">
+            {isAuthLoading ? null : user ? (
+              <>
+                {user.isAdmin && (
+                  <SheetClose asChild>
+                    <Link href="/admin/orders">
+                      <Button variant="outline" className="w-full h-11 justify-start gap-2 border-white/10">
+                        <ShieldAlert className="w-4 h-4" />
+                        Админ
+                      </Button>
+                    </Link>
+                  </SheetClose>
+                )}
+                <SheetClose asChild>
+                  <Link href="/account">
+                    <Button variant="outline" className="w-full h-11 justify-start gap-2 border-white/10">
+                      <User className="w-4 h-4" />
+                      {user.name.split(" ")[0]}
+                    </Button>
+                  </Link>
+                </SheetClose>
+                <Button
+                  variant="ghost"
+                  className="w-full h-11 justify-start text-muted-foreground"
+                  onClick={async () => {
+                    setOpen(false);
+                    await logout();
+                    setLocation("/");
+                  }}
+                >
+                  Выйти
+                </Button>
+              </>
+            ) : (
+              <SheetClose asChild>
+                <Link href="/login">
+                  <Button className="w-full h-11 justify-start gap-2">
+                    <LogIn className="w-4 h-4" />
+                    Войти
+                  </Button>
+                </Link>
+              </SheetClose>
+            )}
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 export function Shell({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { data: health } = useHealthCheck();
@@ -118,26 +217,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </Link>
           
           <nav className="hidden md:flex items-center gap-6">
-            <Link href="/" className={`text-sm font-medium transition-colors hover:text-primary ${location === '/' ? 'text-white' : 'text-muted-foreground'}`}>
-              Главная
-            </Link>
-            <Link href="/events?type=movie" className={`text-sm font-medium transition-colors hover:text-primary ${location.includes('/events') && location.includes('movie') ? 'text-white' : 'text-muted-foreground'}`}>
-              Кино
-            </Link>
-            <Link href="/events?type=theater" className={`text-sm font-medium transition-colors hover:text-primary ${location.includes('/events') && location.includes('theater') ? 'text-white' : 'text-muted-foreground'}`}>
-              Театр
-            </Link>
-            <Link href="/events?type=concert" className={`text-sm font-medium transition-colors hover:text-primary ${location.includes('/events') && location.includes('concert') ? 'text-white' : 'text-muted-foreground'}`}>
-              Концерты
-            </Link>
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`text-sm font-medium transition-colors hover:text-primary ${link.match(location) ? "text-white" : "text-muted-foreground"}`}
+              >
+                {link.label}
+              </Link>
+            ))}
           </nav>
           
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:block">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="hidden md:block">
               <CitySelector />
             </div>
             <Link href="/events">
-              <Button variant="ghost" size="icon" className="rounded-full">
+              <Button variant="ghost" size="icon" className="rounded-full h-11 w-11 sm:h-10 sm:w-10">
                 <Search className="w-5 h-5" />
               </Button>
             </Link>
@@ -145,13 +241,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <>
                 {user.isAdmin && (
                   <Link href="/admin/orders">
-                    <Button variant="outline" className="hidden sm:flex rounded-full px-5 border-white/10 hover:border-primary/50 hover:bg-primary/10">
+                    <Button variant="outline" className="hidden md:flex rounded-full px-5 border-white/10 hover:border-primary/50 hover:bg-primary/10">
                       Админ
                     </Button>
                   </Link>
                 )}
                 <Link href="/account">
-                  <Button variant="outline" className="hidden sm:flex rounded-full px-5 gap-2 border-white/10 hover:border-primary/50 hover:bg-primary/10">
+                  <Button variant="outline" className="hidden md:flex rounded-full px-5 gap-2 border-white/10 hover:border-primary/50 hover:bg-primary/10">
                     <User className="w-4 h-4" />
                     {user.name.split(" ")[0]}
                   </Button>
@@ -159,11 +255,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
               </>
             ) : (
               <Link href="/login">
-                <Button variant="outline" className="hidden sm:flex rounded-full px-6 border-white/10 hover:border-primary/50 hover:bg-primary/10">
+                <Button variant="outline" className="hidden md:flex rounded-full px-6 border-white/10 hover:border-primary/50 hover:bg-primary/10">
                   Войти
                 </Button>
               </Link>
             )}
+            <MobileNav location={location} />
           </div>
         </div>
       </header>
