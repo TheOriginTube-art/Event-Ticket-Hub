@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { Loader2, Clock, CheckCircle2, XCircle, QrCode } from "lucide-react";
+import { Loader2, Clock, CheckCircle2, XCircle, QrCode, ExternalLink } from "lucide-react";
 import {
   useGetOrder,
   getGetOrderQueryKey,
@@ -157,6 +157,18 @@ export default function CheckoutPay() {
                 <span className="text-muted-foreground">Сумма к оплате</span>
                 <span className="text-xl font-bold">{formatRubles(order.totalAmountCents)}</span>
               </div>
+
+              <a
+                href="https://finance.ozon.ru/apps/sbp/ozonbankpay/019f53c7-22b5-7598-b254-3d0a858ca676"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block"
+              >
+                <Button size="lg" variant="outline" className="w-full gap-2 border-white/10">
+                  <ExternalLink className="w-4 h-4" />
+                  Оплатить онлайн
+                </Button>
+              </a>
 
               <Button
                 size="lg"
