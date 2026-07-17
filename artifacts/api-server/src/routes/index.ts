@@ -14,6 +14,7 @@ import adminSessionsRouter from "./adminSessions";
 import adminUsersRouter from "./adminUsers";
 import adminAnalyticsRouter from "./adminAnalytics";
 import storageRouter from "./storage";
+import openaiRouter from "./openai/conversations";
 import { attachUser } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -35,5 +36,6 @@ router.use(adminSessionsRouter);
 router.use(adminUsersRouter);
 router.use(adminAnalyticsRouter);
 router.use(storageRouter);
+router.use(openaiRouter);
 
 export default router;

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { ShieldAlert, LayoutDashboard, Film, MapPin, Users, ClipboardList, Settings } from "lucide-react";
+import { ShieldAlert, LayoutDashboard, Film, MapPin, Users, ClipboardList, Settings, Bot } from "lucide-react";
 
 const TABS = [
   { href: "/admin", label: "Аналитика", icon: LayoutDashboard },
@@ -8,6 +8,7 @@ const TABS = [
   { href: "/admin/venues", label: "Площадки", icon: MapPin },
   { href: "/admin/users", label: "Пользователи", icon: Users },
   { href: "/admin/settings", label: "Настройки", icon: Settings },
+  { href: "/admin/ai-consultant", label: "ИИ-консультант", icon: Bot },
 ];
 
 export function AdminNav() {

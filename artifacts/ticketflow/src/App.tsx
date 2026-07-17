@@ -21,6 +21,7 @@ import AdminEvents from '@/pages/admin/AdminEvents';
 import AdminEventSessions from '@/pages/admin/AdminEventSessions';
 import AdminVenues from '@/pages/admin/AdminVenues';
 import AdminUsers from '@/pages/admin/AdminUsers';
+import AdminAIConsultant from '@/pages/admin/AdminAIConsultant';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -51,6 +52,7 @@ function Router() {
         <Route path="/admin/venues" component={AdminVenues} />
         <Route path="/admin/users" component={AdminUsers} />
         <Route path="/admin/settings" component={AdminSettings} />
+        <Route path="/admin/ai-consultant" component={AdminAIConsultant} />
         <Route>
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center min-h-[50vh]">
             <h1 className="text-4xl font-bold mb-2">404</h1>

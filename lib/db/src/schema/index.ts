@@ -27,3 +27,5 @@ export * from "./authSessions";
 export * from "./orders";
 export * from "./orderSeats";
 export * from "./paymentSettings";
+export * from "./conversations";
+export * from "./messages";

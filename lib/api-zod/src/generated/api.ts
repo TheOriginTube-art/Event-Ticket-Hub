@@ -1124,3 +1124,79 @@ export const GetHomeHighlightsResponse = zod.object({
 })
 
 
+/**
+ * @summary Список диалогов с ИИ-консультантом (только для администраторов)
+ */
+export const ListOpenaiConversationsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const ListOpenaiConversationsResponse = zod.array(ListOpenaiConversationsResponseItem)
+
+
+/**
+ * @summary Создать новый диалог
+ */
+
+
+
+export const CreateOpenaiConversationBody = zod.object({
+  "title": zod.string().min(1)
+})
+
+export const CreateOpenaiConversationResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Получить диалог вместе с сообщениями
+ */
+export const GetOpenaiConversationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetOpenaiConversationResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "messages": zod.array(zod.object({
+  "id": zod.number(),
+  "conversationId": zod.number(),
+  "role": zod.string(),
+  "content": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Удалить диалог
+ */
+export const DeleteOpenaiConversationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteOpenaiConversationResponse = zod.void()
+
+
+/**
+ * @summary Отправить сообщение и получить потоковый ответ ИИ
+ */
+export const SendOpenaiMessageParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+export const SendOpenaiMessageBody = zod.object({
+  "content": zod.string().min(1)
+})
+
+export const SendOpenaiMessageResponse = zod.unknown()
+
+

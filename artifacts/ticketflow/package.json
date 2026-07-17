@@ -52,6 +52,8 @@
     "@workspace/api-client-react": "workspace:*",
     "@workspace/api-zod": "workspace:*",
     "@workspace/object-storage-web": "workspace:*",
+    "@workspace/integrations-openai-ai-react": "workspace:*",
+    "react-markdown": "^9.0.1",
     "@uppy/aws-s3": "^5.0.0",
     "@uppy/core": "^5.0.0",
     "@uppy/dashboard": "^5.0.0",

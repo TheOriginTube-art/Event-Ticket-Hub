@@ -380,6 +380,37 @@ export interface HomeHighlights {
   eventsCount: number;
 }
 
+export interface OpenaiConversation {
+  id: number;
+  title: string;
+  createdAt: string;
+}
+
+export interface OpenaiMessage {
+  id: number;
+  conversationId: number;
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface OpenaiConversationWithMessages {
+  id: number;
+  title: string;
+  createdAt: string;
+  messages: OpenaiMessage[];
+}
+
+export interface OpenaiConversationInput {
+  /** @minLength 1 */
+  title: string;
+}
+
+export interface OpenaiMessageInput {
+  /** @minLength 1 */
+  content: string;
+}
+
 export type ListVenuesParams = {
 city?: string;
 };
