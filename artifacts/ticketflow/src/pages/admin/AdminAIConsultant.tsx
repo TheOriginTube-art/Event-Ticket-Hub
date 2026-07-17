@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, Plus, Send, Trash2, Loader2, MessageSquare, AlertCircle, TrendingUp, TrendingDown, BarChart2, Globe, ShoppingBag, FileText, Tag, Search } from "lucide-react";
+import { Bot, Plus, Send, Trash2, Loader2, MessageSquare, AlertCircle, TrendingUp, TrendingDown, BarChart2, Globe, ShoppingBag, FileText, Tag, Search, ImagePlus, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useRequireAdmin } from "@/lib/useRequireAdmin";
 import { AdminNav } from "@/components/admin/AdminNav";
@@ -95,9 +95,27 @@ export default function AdminAIConsultant() {
   const [streaming, setStreaming] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState("");
+  const [uploadedImage, setUploadedImage] = useState<{ base64: string; mimeType: string; previewUrl: string; name: string } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      // dataUrl = "data:<mime>;base64,<data>"
+      const [meta, base64] = dataUrl.split(",");
+      const mimeType = meta.replace("data:", "").replace(";base64", "");
+      setUploadedImage({ base64, mimeType, previewUrl: dataUrl, name: file.name });
+    };
+    reader.readAsDataURL(file);
+    // сброс input чтобы можно было загрузить тот же файл повторно
+    e.target.value = "";
+  };
 
   const { data: conversations, isLoading: convsLoading } = useListOpenaiConversations({
     query: { queryKey: getListOpenaiConversationsQueryKey(), enabled: ready },
@@ -135,10 +153,12 @@ export default function AdminAIConsultant() {
   };
 
   const handleSend = useCallback(async () => {
-    if (!input.trim() || !selectedId || streaming) return;
+    if ((!input.trim() && !uploadedImage) || !selectedId || streaming) return;
 
-    const content = input.trim();
+    const content = input.trim() || "Создай карточку для товара на этом изображении.";
+    const imageSnapshot = uploadedImage;
     setInput("");
+    setUploadedImage(null);
     setStreamError(null);
     setStreaming(true);
     setStreamingContent("");
@@ -151,7 +171,13 @@ export default function AdminAIConsultant() {
         ...old,
         messages: [
           ...old.messages,
-          { id: -1, conversationId: selectedId, role: "user", content, createdAt: new Date().toISOString() },
+          {
+            id: -1,
+            conversationId: selectedId,
+            role: "user",
+            content: imageSnapshot ? `[📎 Изображение товара]\n${content}` : content,
+            createdAt: new Date().toISOString(),
+          },
         ],
       };
     });
@@ -164,7 +190,12 @@ export default function AdminAIConsultant() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({
+          content,
+          ...(imageSnapshot
+            ? { imageBase64: imageSnapshot.base64, imageMimeType: imageSnapshot.mimeType }
+            : {}),
+        }),
         signal: controller.signal,
       });
 
@@ -432,7 +463,47 @@ export default function AdminAIConsultant() {
                   {label}
                 </button>
               ))}
+
+              {/* Кнопка загрузки фото */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageSelect}
+              />
+              <button
+                disabled={!selectedId || streaming}
+                onClick={() => fileInputRef.current?.click()}
+                title="Загрузить фото товара"
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-white/10 bg-white/5 hover:bg-white/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-teal-400"
+              >
+                <ImagePlus className="w-3 h-3" />
+                Загрузить фото
+              </button>
             </div>
+
+            {/* Превью загруженного изображения */}
+            {uploadedImage && (
+              <div className="flex items-center gap-2 mt-2">
+                <img
+                  src={uploadedImage.previewUrl}
+                  alt={uploadedImage.name}
+                  className="h-14 w-14 object-cover rounded-lg border border-white/10 shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground truncate">{uploadedImage.name}</p>
+                  <p className="text-[10px] text-teal-400 mt-0.5">📸 ИИ проанализирует изображение</p>
+                </div>
+                <button
+                  onClick={() => setUploadedImage(null)}
+                  className="text-muted-foreground hover:text-white transition-colors shrink-0"
+                  title="Убрать изображение"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Поле ввода */}
@@ -454,7 +525,7 @@ export default function AdminAIConsultant() {
               />
               <Button
                 onClick={handleSend}
-                disabled={!selectedId || !input.trim() || streaming}
+                disabled={!selectedId || (!input.trim() && !uploadedImage) || streaming}
                 size="icon"
                 className="shrink-0 h-[52px] w-[52px]"
               >

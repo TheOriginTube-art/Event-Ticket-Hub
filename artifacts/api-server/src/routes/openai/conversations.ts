@@ -145,6 +145,14 @@ router.post("/openai/conversations/:id/messages", requireAdmin, async (req, res)
     return;
   }
 
+  // Опциональное изображение товара (base64 + mime-тип)
+  const imageBase64: string | undefined =
+    typeof req.body.imageBase64 === "string" && req.body.imageBase64.length > 0
+      ? req.body.imageBase64
+      : undefined;
+  const imageMimeType: string =
+    typeof req.body.imageMimeType === "string" ? req.body.imageMimeType : "image/jpeg";
+
   const openai = getOpenAIClient();
   if (!openai) {
     res.status(503).json({ error: "ИИ-консультант не настроен: отсутствует ключ OPENAI_API_KEY" });
@@ -160,38 +168,63 @@ router.post("/openai/conversations/:id/messages", requireAdmin, async (req, res)
     return;
   }
 
-  // Сохраняем сообщение пользователя
+  // В БД сохраняем текст (изображение не хранится между сессиями)
+  const savedContent = imageBase64
+    ? `[📎 Изображение товара]\n${body.data.content}`
+    : body.data.content;
   await db.insert(messages).values({
     conversationId: conversation.id,
     role: "user",
-    content: body.data.content,
+    content: savedContent,
   });
 
-  // История для контекста
+  // История для контекста (без изображений — только текст)
   const history = await db
     .select()
     .from(messages)
     .where(eq(messages.conversationId, conversation.id))
     .orderBy(messages.createdAt);
 
+  // Текущее сообщение — с изображением если есть, иначе текст
+  type ContentPart =
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string; detail: "high" } };
+
+  const currentUserContent: string | ContentPart[] = imageBase64
+    ? ([
+        {
+          type: "image_url",
+          image_url: { url: `data:${imageMimeType};base64,${imageBase64}`, detail: "high" },
+        },
+        { type: "text", text: body.data.content || "Создай карточку для товара на этом изображении." },
+      ] as ContentPart[])
+    : body.data.content;
+
+  // Строим историю: все кроме последнего — текст, последнее уже добавлено выше
+  const historyWithoutLast = history.slice(0, -1);
   const chatMessages = [
     { role: "system" as const, content: SYSTEM_PROMPT },
-    ...history.map((m) => ({
+    ...historyWithoutLast.map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
     })),
+    { role: "user" as const, content: currentUserContent },
   ];
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
 
+  // При наличии изображения используем gpt-4o (лучшее vision)
+  const model = imageBase64 ? "gpt-4o" : "gpt-4o-mini";
+
   let fullResponse = "";
   try {
     const stream = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model,
       max_tokens: 8192,
-      messages: chatMessages,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      messages: chatMessages as any,
       stream: true,
     });
 
