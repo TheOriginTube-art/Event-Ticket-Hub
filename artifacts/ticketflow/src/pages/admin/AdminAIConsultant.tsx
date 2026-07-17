@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, Plus, Send, Trash2, Loader2, MessageSquare, AlertCircle, TrendingUp, TrendingDown, BarChart2, Globe } from "lucide-react";
+import { Bot, Plus, Send, Trash2, Loader2, MessageSquare, AlertCircle, TrendingUp, TrendingDown, BarChart2, Globe, ShoppingBag, FileText, Tag, Search } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useRequireAdmin } from "@/lib/useRequireAdmin";
 import { AdminNav } from "@/components/admin/AdminNav";
@@ -18,6 +18,37 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const QUICK_CARDS = [
+  {
+    icon: ShoppingBag,
+    label: "Полная карточка",
+    color: "text-violet-400",
+    template: (product: string, style: string) =>
+      `Создай полную карточку товара для: ${product}.${style ? ` Стиль: ${style}.` : ""} Включи название, короткое и полное описание, преимущества, характеристики, SEO-ключевые слова и теги.`,
+  },
+  {
+    icon: FileText,
+    label: "Только описание",
+    color: "text-sky-400",
+    template: (product: string, style: string) =>
+      `Напиши продающее описание товара для: ${product}.${style ? ` Стиль: ${style}.` : ""} 150–300 слов, акцент на выгодах для покупателя.`,
+  },
+  {
+    icon: Tag,
+    label: "SEO-заголовок",
+    color: "text-pink-400",
+    template: (product: string, style: string) =>
+      `Придумай 5 вариантов SEO-оптимизированного заголовка (названия) для товара: ${product}.${style ? ` Стиль: ${style}.` : ""} До 100 символов каждый, с ключевыми словами.`,
+  },
+  {
+    icon: Search,
+    label: "Ключевые слова",
+    color: "text-orange-400",
+    template: (product: string, style: string) =>
+      `Подбери 15–20 SEO-ключевых слов и поисковых фраз для товара: ${product}.${style ? ` Стиль: ${style}.` : ""} Раздели на высоко-, средне- и низкочастотные.`,
+  },
+];
 
 const QUICK_SIGNALS = [
   {
@@ -59,6 +90,8 @@ export default function AdminAIConsultant() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [input, setInput] = useState("");
   const [ticker, setTicker] = useState("");
+  const [product, setProduct] = useState("");
+  const [productStyle, setProductStyle] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState("");
@@ -340,7 +373,7 @@ export default function AdminAIConsultant() {
           {/* Панель быстрых торговых сигналов */}
           <div className="shrink-0 border-t border-white/5 px-4 pt-3 pb-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground whitespace-nowrap">Быстрый анализ:</span>
+              <span className="text-xs text-muted-foreground whitespace-nowrap">📈 Анализ:</span>
               <Input
                 value={ticker}
                 onChange={(e) => setTicker(e.target.value.toUpperCase())}
@@ -358,6 +391,41 @@ export default function AdminAIConsultant() {
                     setTimeout(() => textareaRef.current?.focus(), 50);
                   }}
                   title={!ticker.trim() ? "Введите тикер выше" : label}
+                  className={`flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-white/10 bg-white/5 hover:bg-white/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${color}`}
+                >
+                  <Icon className="w-3 h-3" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Панель карточек товаров */}
+          <div className="shrink-0 px-4 pt-2 pb-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">🛍️ Карточка:</span>
+              <Input
+                value={product}
+                onChange={(e) => setProduct(e.target.value)}
+                placeholder="Название товара"
+                className="h-7 w-40 text-xs border-white/10 px-2"
+              />
+              <Input
+                value={productStyle}
+                onChange={(e) => setProductStyle(e.target.value)}
+                placeholder="Стиль (необяз.)"
+                className="h-7 w-32 text-xs border-white/10 px-2"
+              />
+              {QUICK_CARDS.map(({ icon: Icon, label, color, template }) => (
+                <button
+                  key={label}
+                  disabled={!selectedId || streaming || !product.trim()}
+                  onClick={() => {
+                    const text = template(product.trim(), productStyle.trim());
+                    setInput(text);
+                    setTimeout(() => textareaRef.current?.focus(), 50);
+                  }}
+                  title={!product.trim() ? "Введите название товара" : label}
                   className={`flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-white/10 bg-white/5 hover:bg-white/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${color}`}
                 >
                   <Icon className="w-3 h-3" />
