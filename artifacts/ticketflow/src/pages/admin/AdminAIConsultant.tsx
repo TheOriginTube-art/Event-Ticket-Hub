@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, Plus, Send, Trash2, Loader2, MessageSquare, AlertCircle } from "lucide-react";
+import { Bot, Plus, Send, Trash2, Loader2, MessageSquare, AlertCircle, TrendingUp, TrendingDown, BarChart2, Globe } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useRequireAdmin } from "@/lib/useRequireAdmin";
 import { AdminNav } from "@/components/admin/AdminNav";
@@ -15,8 +15,40 @@ import {
   getGetOpenaiConversationQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const QUICK_SIGNALS = [
+  {
+    icon: TrendingUp,
+    label: "Сигнал: купить?",
+    color: "text-emerald-400",
+    template: (ticker: string) =>
+      `Дай торговый сигнал по ${ticker}: стоит ли покупать сейчас? Укажи точку входа, стоп-лосс, тейк-профит и горизонт сделки.`,
+  },
+  {
+    icon: TrendingDown,
+    label: "Сигнал: продать/шорт?",
+    color: "text-red-400",
+    template: (ticker: string) =>
+      `Дай торговый сигнал по ${ticker}: стоит ли продавать или открывать шорт? Укажи точку входа, стоп-лосс, тейк-профит.`,
+  },
+  {
+    icon: BarChart2,
+    label: "Тех. анализ",
+    color: "text-blue-400",
+    template: (ticker: string) =>
+      `Сделай технический анализ ${ticker}: уровни поддержки и сопротивления, тренд, RSI, MACD, скользящие средние. Какой торговый план?`,
+  },
+  {
+    icon: Globe,
+    label: "Фундаментал",
+    color: "text-amber-400",
+    template: (ticker: string) =>
+      `Дай фундаментальный анализ ${ticker}: ключевые метрики, последние новости, перспективы. Переоценён или недооценён?`,
+  },
+];
 
 export default function AdminAIConsultant() {
   const { ready } = useRequireAdmin();
@@ -26,6 +58,7 @@ export default function AdminAIConsultant() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [input, setInput] = useState("");
+  const [ticker, setTicker] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState("");
@@ -304,8 +337,38 @@ export default function AdminAIConsultant() {
             <div ref={bottomRef} />
           </div>
 
+          {/* Панель быстрых торговых сигналов */}
+          <div className="shrink-0 border-t border-white/5 px-4 pt-3 pb-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Быстрый анализ:</span>
+              <Input
+                value={ticker}
+                onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                placeholder="AAPL / BTC / SBER"
+                className="h-7 w-36 text-xs border-white/10 px-2"
+                maxLength={10}
+              />
+              {QUICK_SIGNALS.map(({ icon: Icon, label, color, template }) => (
+                <button
+                  key={label}
+                  disabled={!selectedId || streaming || !ticker.trim()}
+                  onClick={() => {
+                    const text = template(ticker.trim());
+                    setInput(text);
+                    setTimeout(() => textareaRef.current?.focus(), 50);
+                  }}
+                  title={!ticker.trim() ? "Введите тикер выше" : label}
+                  className={`flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-white/10 bg-white/5 hover:bg-white/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${color}`}
+                >
+                  <Icon className="w-3 h-3" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Поле ввода */}
-          <div className="shrink-0 border-t border-white/5 p-4">
+          <div className="shrink-0 p-4">
             <div className="flex gap-2 items-end">
               <Textarea
                 ref={textareaRef}
@@ -335,7 +398,7 @@ export default function AdminAIConsultant() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground mt-2 text-center">
-              ИИ-консультант — информационный инструмент. Не является финансовым советником. Все инвестиции несут риски.
+              Персональный ИИ-ассистент. Анализ носит информационный характер — не является финансовой рекомендацией.
             </p>
           </div>
         </div>
