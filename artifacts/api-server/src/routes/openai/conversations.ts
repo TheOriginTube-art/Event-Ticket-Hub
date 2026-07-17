@@ -253,4 +253,81 @@ router.post("/openai/conversations/:id/messages", requireAdmin, async (req, res)
   res.end();
 });
 
+/** Генерация изображения через DALL-E 3 */
+router.post("/openai/conversations/:id/generate-image", requireAdmin, async (req, res): Promise<void> => {
+  const params = SendOpenaiMessageParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const prompt: string | undefined =
+    typeof req.body.prompt === "string" && req.body.prompt.trim().length > 0
+      ? req.body.prompt.trim()
+      : undefined;
+
+  if (!prompt) {
+    res.status(400).json({ error: "Поле prompt обязательно" });
+    return;
+  }
+
+  const size: "1024x1024" | "1792x1024" | "1024x1792" =
+    req.body.size === "1792x1024" ? "1792x1024"
+    : req.body.size === "1024x1792" ? "1024x1792"
+    : "1024x1024";
+
+  const openai = getOpenAIClient();
+  if (!openai) {
+    res.status(503).json({ error: "ИИ-консультант не настроен: отсутствует ключ OPENAI_API_KEY" });
+    return;
+  }
+
+  const [conversation] = await db
+    .select()
+    .from(conversations)
+    .where(and(eq(conversations.id, params.data.id), eq(conversations.userId, req.user!.id)));
+  if (!conversation) {
+    res.status(404).json({ error: "Диалог не найден" });
+    return;
+  }
+
+  // Сохраняем запрос пользователя
+  await db.insert(messages).values({
+    conversationId: conversation.id,
+    role: "user",
+    content: `🎨 Нарисовать: ${prompt}`,
+  });
+
+  try {
+    const response = await openai.images.generate({
+      model: "dall-e-3",
+      prompt,
+      n: 1,
+      size,
+      quality: "standard",
+    });
+
+    const imageUrl = response.data?.[0]?.url;
+    if (!imageUrl) throw new Error("Пустой ответ от DALL-E");
+
+    const assistantContent = `![${prompt}](${imageUrl})\n\n*Изображение сгенерировано DALL-E 3. Ссылка действительна ~1 час — сохраните при необходимости.*`;
+
+    const [saved] = await db
+      .insert(messages)
+      .values({ conversationId: conversation.id, role: "assistant", content: assistantContent })
+      .returning();
+
+    res.json({ message: saved, imageUrl });
+  } catch (err) {
+    req.log.error({ err }, "Ошибка DALL-E");
+    // Сохраняем ошибку как сообщение ассистента
+    await db.insert(messages).values({
+      conversationId: conversation.id,
+      role: "assistant",
+      content: "❌ Не удалось сгенерировать изображение. Попробуйте изменить запрос.",
+    });
+    res.status(500).json({ error: "Ошибка генерации изображения" });
+  }
+});
+
 export default router;
