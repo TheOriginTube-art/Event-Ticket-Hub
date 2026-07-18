@@ -179,7 +179,7 @@ info "Собираю фронтенд..."
 BASE_PATH=/dps-radar/ pnpm --filter @workspace/dps-radar run build
 
 info "Применяю миграции БД..."
-DATABASE_URL="${DATABASE_URL}" pnpm --filter db push
+DATABASE_URL="${DATABASE_URL}" pnpm --filter @workspace/db push
 
 # ── 8. pm2 ────────────────────────────────────────────────────────────────────
 info "Перезапускаю pm2..."
