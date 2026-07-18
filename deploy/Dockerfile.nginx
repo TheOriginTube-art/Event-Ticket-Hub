@@ -9,12 +9,17 @@ RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
 WORKDIR /app
 
 # Манифесты для кэширования слоёв
+# (pnpm с --frozen-lockfile должен видеть все workspace-пакеты из lockfile)
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 
-COPY lib/db/package.json                    lib/db/
-COPY lib/api-spec/package.json              lib/api-spec/
-COPY lib/api-client-react/package.json      lib/api-client-react/
-COPY artifacts/dps-radar/package.json       artifacts/dps-radar/
+COPY lib/db/package.json                            lib/db/
+COPY lib/api-zod/package.json                       lib/api-zod/
+COPY lib/api-spec/package.json                      lib/api-spec/
+COPY lib/api-client-react/package.json              lib/api-client-react/
+COPY lib/integrations-openai-ai-server/package.json lib/integrations-openai-ai-server/
+COPY lib/integrations-openai-ai-react/package.json  lib/integrations-openai-ai-react/
+COPY lib/object-storage-web/package.json            lib/object-storage-web/
+COPY artifacts/dps-radar/package.json               artifacts/dps-radar/
 
 RUN pnpm install --frozen-lockfile
 

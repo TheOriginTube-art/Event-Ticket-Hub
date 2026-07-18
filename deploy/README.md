@@ -67,27 +67,17 @@ sudo nginx -t && sudo systemctl reload nginx
 ```bash
 cd /opt/dps-radar
 
-# Поднимаем только postgres
+# Сначала поднимаем только postgres и ждём, пока он станет healthy
 docker compose -f deploy/docker-compose.yml up -d postgres
 
-# Ждём 5 секунд и применяем схему
-sleep 5
-docker compose -f deploy/docker-compose.yml \
-  run --rm postgres \
-  psql postgresql://dpsradar:$(grep POSTGRES_PASSWORD deploy/.env | cut -d= -f2)@postgres:5432/dpsradar \
-  -c "SELECT 1"
-```
-
-> **Проще:** подождите шага 5 — API-сервер при первом старте пытается применить
-> миграции автоматически через drizzle. Если таблиц нет, первые запросы упадут,
-> но после `docker compose restart api` всё встанет на место.
-
-Или запустите миграцию явно:
-
-```bash
+# Применяем схему через drizzle-kit push
+# (сервис migrate использует builder-образ с pnpm и исходниками)
 docker compose -f deploy/docker-compose.yml \
   --profile migrate run --rm migrate
 ```
+
+Команда завершится без ошибок и выведет список применённых таблиц.
+После этого сервис автоматически остановится.
 
 ### 5. Запустите всё
 

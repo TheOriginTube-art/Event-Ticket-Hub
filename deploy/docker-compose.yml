@@ -37,19 +37,18 @@ services:
         condition: service_healthy
 
   # ── Инициализация БД (запускается один раз, потом останавливается) ──────────
+  # Использует target: builder, в котором есть pnpm и исходники drizzle-kit
   migrate:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.api
+      target: builder
     restart: "no"
     environment:
       PORT:         9999
       DATABASE_URL: postgresql://dpsradar:${POSTGRES_PASSWORD}@postgres:5432/dpsradar
     entrypoint: >
-      sh -c "
-        npm install -g pnpm@10.26.1 &&
-        pnpm --filter @workspace/db run push --accept-data-loss
-      "
+      sh -c "pnpm --filter @workspace/db run push --accept-data-loss"
     depends_on:
       postgres:
         condition: service_healthy
