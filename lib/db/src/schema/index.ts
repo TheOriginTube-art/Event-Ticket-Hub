@@ -32,3 +32,5 @@ export * from "./messages";
 export * from "./dpsEvents";
 export * from "./chatSettings";
 export * from "./permanentCameras";
+export * from "./telegramUsers";
+export * from "./friendships";

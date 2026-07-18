@@ -16,6 +16,7 @@ import adminAnalyticsRouter from "./adminAnalytics";
 import storageRouter from "./storage";
 import openaiRouter from "./openai/conversations";
 import dpsRadarRouter from "./dpsRadar";
+import dpsProfileRouter from "./dpsProfile";
 import { attachUser } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -39,5 +40,6 @@ router.use(adminAnalyticsRouter);
 router.use(storageRouter);
 router.use(openaiRouter);
 router.use(dpsRadarRouter);
+router.use("/dps-radar", dpsProfileRouter);
 
 export default router;

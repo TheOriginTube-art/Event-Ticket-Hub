@@ -2,7 +2,7 @@ import React from 'react';
 import * as L from 'leaflet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Navigation, Settings, MapPin, X, Check, Trash2, Camera, Play, Square, AlertTriangle, Send } from 'lucide-react';
+import { Navigation, Settings, MapPin, X, Check, Trash2, Camera, Play, Square, AlertTriangle, Send, User, Users, LocateFixed } from 'lucide-react';
 import { useListDpsEvents, useGetDpsStats } from '@workspace/api-client-react';
 import { GeocodeResult, useGeocodeSearch } from '@/lib/nominatim';
 import { fetchOsrmRoute, calculateAvoidanceWaypoints, RouteResult } from '@/lib/osrm';
@@ -149,6 +149,25 @@ export default function MapPage() {
 
   // OSM камеры
   const [osmCameras, setOsmCameras] = React.useState<OsmCamera[]>([]);
+
+  // Профиль и друзья
+  type TgProfile = { telegramId: number; firstName: string; lastName?: string | null; username?: string | null; photoUrl?: string | null; shareLocation: boolean; reportCount: number; friendCount: number }
+  type Friend    = { telegramId: number; firstName: string; lastName?: string | null; username?: string | null; friendshipId: number }
+  type FriendLoc = { telegramId: number; firstName: string; lastLat: number; lastLng: number; lastLocAt: string }
+
+  const [showProfileSheet, setShowProfileSheet] = React.useState(false);
+  const [tgProfile,   setTgProfile]   = React.useState<TgProfile | null>(null);
+  const [friends,     setFriends]     = React.useState<Friend[]>([]);
+  const [pendingFr,   setPendingFr]   = React.useState<Friend[]>([]);
+  const [friendLocs,  setFriendLocs]  = React.useState<FriendLoc[]>([]);
+  const [shareLocation, setShareLocation] = React.useState(false);
+  const [addUsername, setAddUsername] = React.useState('');
+  const [addStatus,   setAddStatus]   = React.useState<'idle'|'loading'|'ok'|'notfound'|'error'>('idle');
+  const [addMsg,      setAddMsg]      = React.useState('');
+  const friendLocLayerRef = React.useRef<L.LayerGroup>(new L.LayerGroup());
+
+  const BASE = (import.meta.env.BASE_URL as string) ?? '/dps-radar/';
+  const tgInitData = React.useMemo(() => (window as Record<string,any>).Telegram?.WebApp?.initData as string | undefined, []);
 
   // Репортинг события
   const [showReportDialog, setShowReportDialog] = React.useState(false);
@@ -365,6 +384,64 @@ export default function MapPage() {
     el.style.cursor = isAddingMarker ? 'crosshair' : '';
   }, [isAddingMarker]);
 
+  // ── Профиль: синхронизация при старте ────────────────────────────────────
+  React.useEffect(() => {
+    if (!tgInitData) return;
+    fetch(`${BASE}api/dps-radar/profile/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: tgInitData }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then((p: TgProfile | null) => { if (p) { setTgProfile(p); setShareLocation(p.shareLocation); } })
+      .catch(() => {});
+  }, [tgInitData]);
+
+  // ── GPS маяк: обновление позиции каждые 30 сек ────────────────────────────
+  React.useEffect(() => {
+    if (!tgInitData || !gps || !shareLocation) return;
+    const post = () => fetch(`${BASE}api/dps-radar/profile/location`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: tgInitData, lat: gps.lat, lng: gps.lng }),
+    }).catch(() => {});
+    post();
+    const t = setInterval(post, 30_000);
+    return () => clearInterval(t);
+  }, [gps?.lat, gps?.lng, shareLocation, tgInitData]);
+
+  // ── Локации друзей: загрузка и обновление каждые 30 сек ──────────────────
+  React.useEffect(() => {
+    if (!tgInitData) return;
+    const load = () => fetch(`${BASE}api/dps-radar/friends/locations`, {
+      headers: { 'x-init-data': tgInitData },
+    }).then(r => r.ok ? r.json() : []).then(setFriendLocs).catch(() => {});
+    load();
+    const t = setInterval(load, 30_000);
+    return () => clearInterval(t);
+  }, [tgInitData]);
+
+  // ── Друзья на карте ───────────────────────────────────────────────────────
+  React.useEffect(() => {
+    const layer = friendLocLayerRef.current;
+    layer.clearLayers();
+    if (!mapRef.current) return;
+    if (!layer['_map']) layer.addTo(mapRef.current);
+    friendLocs.forEach(f => {
+      const initials = (f.firstName?.[0] ?? '?').toUpperCase();
+      const minsAgo  = Math.round((Date.now() - new Date(f.lastLocAt).getTime()) / 60_000);
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="width:36px;height:36px;border-radius:50%;background:#3b82f6;border:2px solid white;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.5)">${initials}</div>`,
+        iconSize:   [36, 36],
+        iconAnchor: [18, 18],
+      });
+      const m = L.marker([f.lastLat, f.lastLng], { icon });
+      m.bindPopup(`<div style="font-weight:600">${escHtml(f.firstName)}</div><div style="font-size:.8em;color:#94a3b8">${minsAgo} мин назад</div>`);
+      m.addTo(layer);
+    });
+  }, [friendLocs]);
+
   // ── Отрисовка событий (посты, камеры, аварии) ─────────────────────────────
   React.useEffect(() => {
     const layer = eventsLayerRef.current;
@@ -493,6 +570,77 @@ export default function MapPage() {
     if (fromPoint && toPoint) void handleCalculateRoute();
   }, [fromPoint, toPoint]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Профиль: вспомогательные функции ────────────────────────────────────
+  const loadFriends = React.useCallback(async () => {
+    if (!tgInitData) return;
+    const r = await fetch(`${BASE}api/dps-radar/friends`, { headers: { 'x-init-data': tgInitData } });
+    if (!r.ok) return;
+    const j = await r.json() as { friends: Friend[]; pending: Friend[] };
+    setFriends(j.friends);
+    setPendingFr(j.pending);
+  }, [tgInitData]);
+
+  React.useEffect(() => { if (showProfileSheet) void loadFriends(); }, [showProfileSheet, loadFriends]);
+
+  const toggleSharing = async () => {
+    if (!tgInitData) return;
+    const next = !shareLocation;
+    setShareLocation(next);
+    await fetch(`${BASE}api/dps-radar/profile/sharing`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: tgInitData, share: next }),
+    }).catch(() => {});
+    setTgProfile(p => p ? { ...p, shareLocation: next } : p);
+  };
+
+  const sendFriendRequest = async () => {
+    if (!tgInitData || !addUsername.trim()) return;
+    setAddStatus('loading');
+    setAddMsg('');
+    const r = await fetch(`${BASE}api/dps-radar/friends/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: tgInitData, username: addUsername.trim() }),
+    });
+    const j = await r.json() as { notFound?: boolean; inviteLink?: string; alreadyExists?: boolean; ok?: boolean };
+    if (j.notFound) {
+      setAddStatus('notfound');
+      setAddMsg(j.inviteLink ?? '');
+    } else if (j.alreadyExists) {
+      setAddStatus('ok');
+      setAddMsg('Заявка уже отправлена или вы уже друзья');
+    } else if (j.ok) {
+      setAddStatus('ok');
+      setAddMsg('Заявка отправлена!');
+      setAddUsername('');
+      void loadFriends();
+    } else {
+      setAddStatus('error');
+      setAddMsg('Ошибка, попробуйте ещё раз');
+    }
+  };
+
+  const acceptFriend = async (id: number) => {
+    if (!tgInitData) return;
+    await fetch(`${BASE}api/dps-radar/friends/${id}/accept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: tgInitData }),
+    });
+    void loadFriends();
+  };
+
+  const removeFriend = async (id: number) => {
+    if (!tgInitData) return;
+    await fetch(`${BASE}api/dps-radar/friends/${id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: tgInitData }),
+    });
+    void loadFriends();
+  };
+
   const submitReport = async () => {
     if (!gps) { setReportError('Включите геолокацию для отправки сообщений'); return; }
     if (!reportAddress.trim()) { setReportError('Укажите адрес'); return; }
@@ -598,7 +746,7 @@ export default function MapPage() {
 
       {/* ── Спидометр — правый нижний угол ──────────────────────────────── */}
       {speed != null && (
-        <div className="absolute z-40 pointer-events-none" style={{ bottom: 80, right: 16 }}>
+        <div className="absolute z-40 pointer-events-none" style={{ bottom: 104, right: 16 }}>
           <div className={`flex flex-col items-center justify-center rounded-2xl font-black leading-none shadow-xl border-2 ${
             isSpeeding
               ? 'bg-red-600 border-red-400 text-white'
@@ -689,7 +837,8 @@ export default function MapPage() {
       {showRouteSearch && !isNavigating && (
         <div className="absolute inset-0 z-40 flex items-end" onClick={() => setShowRouteSearch(false)}>
           <div
-            className="w-full bg-card border-t border-border rounded-t-3xl p-5 pb-8 shadow-2xl"
+            className="w-full bg-card border-t border-border rounded-t-3xl p-5 shadow-2xl"
+            style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
             onClick={e => e.stopPropagation()}
           >
             {/* Шапка */}
@@ -702,17 +851,45 @@ export default function MapPage() {
 
             {/* От */}
             <div className="relative mb-3">
-              <div className="flex items-center bg-input/50 rounded-xl border border-border focus-within:border-ring px-3 py-2.5">
-                <div className="w-3 h-3 rounded-full bg-blue-500 mr-3 shrink-0" />
+              <div className="flex items-center bg-input/50 rounded-xl border border-border focus-within:border-ring px-3 py-2.5 gap-2">
+                <div className="w-3 h-3 rounded-full bg-blue-500 shrink-0" />
                 <input
                   type="text"
                   placeholder="Откуда..."
-                  className="bg-transparent border-none outline-none flex-1 text-sm text-foreground placeholder:text-muted-foreground"
+                  className="bg-transparent border-none outline-none flex-1 text-sm text-foreground placeholder:text-muted-foreground min-w-0"
                   value={fromPoint ? fromPoint.display_name : fromQuery}
                   onChange={e => { setFromQuery(e.target.value); setFromPoint(null); setIsSearchingFrom(true); }}
                   onFocus={() => setIsSearchingFrom(true)}
                   onBlur={() => setTimeout(() => setIsSearchingFrom(false), 200)}
                 />
+                {/* Кнопка «моё местоположение» */}
+                <button
+                  title="Использовать моё местоположение"
+                  disabled={!gps}
+                  onClick={async () => {
+                    if (!gps) return;
+                    // Пробуем реверс-геокодинг через Nominatim
+                    try {
+                      const r = await fetch(
+                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${gps.lat}&lon=${gps.lng}&accept-language=ru`,
+                        { headers: { 'User-Agent': 'DPSRadarApp/1.0' } },
+                      );
+                      const j = await r.json() as { display_name?: string };
+                      setFromPoint({ lat: String(gps.lat), lon: String(gps.lng), display_name: j.display_name ?? '📍 Моё местоположение' });
+                    } catch {
+                      setFromPoint({ lat: String(gps.lat), lon: String(gps.lng), display_name: '📍 Моё местоположение' });
+                    }
+                    setFromQuery('');
+                    setIsSearchingFrom(false);
+                  }}
+                  className={`shrink-0 flex items-center justify-center w-7 h-7 rounded-lg transition-colors ${
+                    gps
+                      ? 'text-blue-400 bg-blue-500/15 hover:bg-blue-500/25 active:bg-blue-500/35'
+                      : 'text-muted-foreground/40 cursor-not-allowed'
+                  }`}
+                >
+                  <LocateFixed className="w-4 h-4" />
+                </button>
               </div>
               {isSearchingFrom && fromResults && fromResults.length > 0 && (
                 <div className="absolute bottom-full left-0 w-full mb-1 bg-popover border border-border rounded-xl shadow-lg overflow-hidden z-50">
@@ -811,7 +988,8 @@ export default function MapPage() {
           className="absolute inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
           onClick={e => { if (e.target === e.currentTarget) { setShowReportDialog(false); setReportStatus('idle'); setReportError(''); } }}
         >
-          <div className="w-full max-w-md bg-card border-t border-border rounded-t-3xl p-5 pb-8 shadow-2xl"
+          <div className="w-full max-w-md bg-card border-t border-border rounded-t-3xl p-5 shadow-2xl"
+            style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
             onClick={e => e.stopPropagation()}>
             {/* Ручка */}
             <div className="w-10 h-1 bg-muted-foreground/30 rounded-full mx-auto mb-4" />
@@ -896,6 +1074,26 @@ export default function MapPage() {
               <MapPin className="w-4 h-4 text-purple-400" />
               <span className="font-semibold text-sm">Название метки</span>
             </div>
+
+            {/* GPS — быстро поставить в своё местоположение */}
+            <button
+              onClick={() => gps && setPendingCoords({ lat: gps.lat, lng: gps.lng })}
+              disabled={!gps}
+              className={`w-full flex items-center gap-2 text-xs px-3 py-2 rounded-lg border mb-3 transition-colors ${
+                gps
+                  ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 active:bg-blue-500/20'
+                  : 'bg-muted/30 border-border text-muted-foreground/50 cursor-not-allowed'
+              }`}
+            >
+              <LocateFixed className="w-3.5 h-3.5 shrink-0" />
+              <span>{gps ? 'Использовать моё местоположение' : 'GPS недоступен'}</span>
+              {gps && (
+                <span className="ml-auto font-mono opacity-60">
+                  {gps.lat.toFixed(4)}, {gps.lng.toFixed(4)}
+                </span>
+              )}
+            </button>
+
             <input
               autoFocus
               type="text"
@@ -917,67 +1115,85 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* ── Нижняя панель ─────────────────────────────────────────────── */}
-      <div className="relative z-10 w-full p-3 pb-safe pointer-events-none">
-        <div className="pointer-events-auto flex items-center gap-2 bg-card/90 backdrop-blur-md border border-card-border shadow-xl rounded-2xl px-3 py-2">
-          {/* Статистика */}
-          <div className="flex items-center gap-3 text-xs font-medium flex-1 min-w-0">
+      {/* ── Нижняя панель (две строки, мобильная) ─────────────────────── */}
+      <div
+        className="relative z-10 w-full px-3 pointer-events-none"
+        style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
+      >
+        <div className="pointer-events-auto mb-3 bg-card/95 backdrop-blur-md border border-border shadow-xl rounded-2xl overflow-hidden">
+
+          {/* Строка 1: статистика ─────────────────────────────────────── */}
+          <div className="flex items-center gap-3 px-4 py-2 border-b border-border/30 text-xs font-medium">
             {settings.showPosts && (
-              <div className="flex items-center gap-1.5 text-amber-400 whitespace-nowrap">
-                <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span className="flex items-center gap-1.5 text-amber-400 whitespace-nowrap">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
                 ДПС: {stats?.dpsPostCount ?? 0}
-              </div>
+              </span>
             )}
             {settings.showCameras && (
-              <div className="flex items-center gap-1.5 text-cyan-400 whitespace-nowrap">
-                <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+              <span className="flex items-center gap-1.5 text-cyan-400 whitespace-nowrap">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
                 Камеры: {stats?.cameraCount ?? 0}
-              </div>
+              </span>
             )}
             {settings.showAccidents && (
-              <div className="flex items-center gap-1.5 text-destructive whitespace-nowrap">
-                <div className="w-2 h-2 rounded-full bg-destructive animate-pulse shrink-0" />
+              <span className="flex items-center gap-1.5 text-destructive whitespace-nowrap">
+                <span className="w-2 h-2 rounded-full bg-destructive animate-pulse shrink-0" />
                 ДТП: {stats?.accidentCount ?? 0}
-              </div>
+              </span>
+            )}
+            {!settings.showPosts && !settings.showCameras && !settings.showAccidents && (
+              <span className="text-muted-foreground">Все слои скрыты</span>
             )}
           </div>
 
-          {/* Кнопка: сообщить об инциденте */}
-          <button
-            onClick={() => { setShowReportDialog(true); setReportStatus('idle'); setReportError(''); }}
-            title="Сообщить о посте ДПС или аварии"
-            className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-xl border transition-colors shrink-0 bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
-          >
-            <AlertTriangle className="w-3.5 h-3.5" />
-            Сообщить
-          </button>
+          {/* Строка 2: действия ──────────────────────────────────────── */}
+          <div className="flex items-center gap-2 px-3 py-2">
+            {/* Сообщить */}
+            <button
+              onClick={() => { setShowReportDialog(true); setReportStatus('idle'); setReportError(''); }}
+              className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border bg-amber-500/10 border-amber-500/30 text-amber-400 active:bg-amber-500/25 transition-colors"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span>Сообщить</span>
+            </button>
 
-          {/* Кнопка: добавить метку */}
-          <button
-            onClick={() => {
-              if (isAddingMarker) { setIsAddingMarker(false); return; }
-              setPendingCoords(null);
-              setIsAddingMarker(true);
-            }}
-            title={isAddingMarker ? 'Нажмите на карту' : 'Добавить свою метку'}
-            className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-xl border transition-colors shrink-0 ${
-              isAddingMarker
-                ? 'bg-purple-600 border-purple-500 text-white'
-                : 'bg-white/5 border-white/10 text-purple-400 hover:bg-white/10'
-            }`}
-          >
-            <MapPin className="w-3.5 h-3.5" />
-            {isAddingMarker ? 'Нажмите' : 'Метка'}
-          </button>
+            {/* Профиль */}
+            <button
+              onClick={() => setShowProfileSheet(true)}
+              className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border bg-blue-500/10 border-blue-500/30 text-blue-400 active:bg-blue-500/25 transition-colors"
+            >
+              <User className="w-3.5 h-3.5 shrink-0" />
+              <span>Профиль</span>
+            </button>
 
-          {/* Кнопка настроек */}
-          <button
-            onClick={() => setShowSettings(true)}
-            title="Настройки"
-            className="flex items-center justify-center w-8 h-8 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors shrink-0"
-          >
-            <Settings className="w-4 h-4 text-muted-foreground" />
-          </button>
+            <div className="flex-1" />
+
+            {/* Метка */}
+            <button
+              onClick={() => {
+                if (isAddingMarker) { setIsAddingMarker(false); return; }
+                setPendingCoords(null);
+                setIsAddingMarker(true);
+              }}
+              className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border transition-colors ${
+                isAddingMarker
+                  ? 'bg-purple-600 border-purple-500 text-white'
+                  : 'bg-white/5 border-white/10 text-purple-400 active:bg-white/10'
+              }`}
+            >
+              <MapPin className="w-3.5 h-3.5 shrink-0" />
+              <span>{isAddingMarker ? 'Нажмите' : 'Метка'}</span>
+            </button>
+
+            {/* Настройки */}
+            <button
+              onClick={() => setShowSettings(true)}
+              className="flex items-center justify-center w-9 h-9 rounded-xl bg-white/5 border border-white/10 active:bg-white/10 transition-colors shrink-0"
+            >
+              <Settings className="w-4 h-4 text-muted-foreground" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -985,7 +1201,8 @@ export default function MapPage() {
       {showSettings && (
         <div className="absolute inset-0 z-50 flex items-end" onClick={() => setShowSettings(false)}>
           <div
-            className="w-full bg-card border-t border-border rounded-t-3xl p-5 pb-8 shadow-2xl"
+            className="w-full bg-card border-t border-border rounded-t-3xl p-5 shadow-2xl"
+            style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-5">
@@ -1035,6 +1252,166 @@ export default function MapPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* ── Профиль (bottom sheet) ───────────────────────────────────────── */}
+      {showProfileSheet && (
+        <div className="absolute inset-0 z-50 flex items-end" onClick={() => setShowProfileSheet(false)}>
+          <div
+            className="w-full bg-card border-t border-border rounded-t-3xl p-5 shadow-2xl max-h-[88dvh] overflow-y-auto"
+            style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-muted-foreground/30 rounded-full mx-auto mb-4" />
+
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2 font-bold text-base">
+                <User className="w-5 h-5 text-blue-400" />
+                Профиль
+              </div>
+              <button onClick={() => setShowProfileSheet(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {tgProfile ? (
+              <>
+                {/* Аватар + имя */}
+                <div className="flex items-center gap-4 mb-5">
+                  {tgProfile.photoUrl ? (
+                    <img src={tgProfile.photoUrl} alt="" className="w-14 h-14 rounded-full object-cover border-2 border-border" />
+                  ) : (
+                    <div className="w-14 h-14 rounded-full bg-blue-500/20 border-2 border-blue-500/30 flex items-center justify-center text-2xl font-bold text-blue-400">
+                      {(tgProfile.firstName?.[0] ?? '?').toUpperCase()}
+                    </div>
+                  )}
+                  <div>
+                    <div className="font-bold text-base">{tgProfile.firstName}{tgProfile.lastName ? ` ${tgProfile.lastName}` : ''}</div>
+                    {tgProfile.username && <div className="text-xs text-muted-foreground mt-0.5">@{tgProfile.username}</div>}
+                  </div>
+                </div>
+
+                {/* Статистика */}
+                <div className="flex gap-3 mb-5">
+                  <div className="flex-1 bg-muted/40 rounded-xl p-3 text-center">
+                    <div className="text-xl font-black text-amber-400">{tgProfile.reportCount}</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">Сообщений</div>
+                  </div>
+                  <div className="flex-1 bg-muted/40 rounded-xl p-3 text-center">
+                    <div className="text-xl font-black text-blue-400">{tgProfile.friendCount}</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">Друзей</div>
+                  </div>
+                </div>
+
+                {/* Шаринг местоположения */}
+                <div className="flex items-center justify-between py-3 border-t border-border/40 mb-4">
+                  <div>
+                    <div className="text-sm font-medium">Делиться местоположением</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Видно только вашим друзьям</div>
+                  </div>
+                  <button
+                    onClick={() => void toggleSharing()}
+                    className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${shareLocation ? 'bg-blue-500' : 'bg-muted'}`}
+                  >
+                    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${shareLocation ? 'left-6' : 'left-0.5'}`} />
+                  </button>
+                </div>
+
+                {/* Добавить друга */}
+                <div className="mb-4">
+                  <div className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                    <Users className="w-4 h-4 text-blue-400" /> Добавить друга
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="@username в Telegram"
+                      className="flex-1 bg-input/60 border border-border rounded-xl px-3 py-2 text-sm outline-none focus:border-ring text-foreground placeholder:text-muted-foreground"
+                      value={addUsername}
+                      onChange={e => { setAddUsername(e.target.value); setAddStatus('idle'); setAddMsg(''); }}
+                      onKeyDown={e => { if (e.key === 'Enter') void sendFriendRequest(); }}
+                    />
+                    <Button
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4"
+                      disabled={!addUsername.trim() || addStatus === 'loading'}
+                      onClick={() => void sendFriendRequest()}
+                    >
+                      {addStatus === 'loading' ? '…' : 'Найти'}
+                    </Button>
+                  </div>
+                  {addStatus === 'ok' && <div className="text-emerald-400 text-xs mt-2">✓ {addMsg}</div>}
+                  {addStatus === 'notfound' && (
+                    <div className="text-xs mt-2 text-muted-foreground">
+                      Пользователь не найден.{' '}
+                      <a href={addMsg} target="_blank" rel="noreferrer" className="text-blue-400 underline">
+                        Пригласить в ДПС Радар
+                      </a>
+                    </div>
+                  )}
+                  {addStatus === 'error' && <div className="text-red-400 text-xs mt-2">{addMsg}</div>}
+                </div>
+
+                {/* Входящие запросы */}
+                {pendingFr.length > 0 && (
+                  <div className="mb-4">
+                    <div className="text-sm font-semibold mb-2 text-amber-400">Входящие запросы</div>
+                    <div className="flex flex-col gap-2">
+                      {pendingFr.map(f => (
+                        <div key={f.friendshipId} className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
+                          <div className="w-9 h-9 rounded-full bg-amber-500/20 flex items-center justify-center text-sm font-bold text-amber-400 shrink-0">
+                            {(f.firstName?.[0] ?? '?').toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{f.firstName}{f.lastName ? ` ${f.lastName}` : ''}</div>
+                            {f.username && <div className="text-xs text-muted-foreground">@{f.username}</div>}
+                          </div>
+                          <div className="flex gap-1.5 shrink-0">
+                            <button onClick={() => void acceptFriend(f.friendshipId)} className="text-xs px-2.5 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold">✓</button>
+                            <button onClick={() => void removeFriend(f.friendshipId)} className="text-xs px-2.5 py-1.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20">✕</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Список друзей */}
+                <div>
+                  <div className="text-sm font-semibold mb-2">Друзья ({friends.length})</div>
+                  {friends.length === 0 ? (
+                    <div className="text-xs text-muted-foreground py-3 text-center">Добавьте друзей, чтобы видеть их на карте</div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {friends.map(f => {
+                        const loc = friendLocs.find(l => l.telegramId === f.telegramId);
+                        const minsAgo = loc ? Math.round((Date.now() - new Date(loc.lastLocAt).getTime()) / 60_000) : null;
+                        return (
+                          <div key={f.friendshipId} className="flex items-center gap-3 bg-muted/30 rounded-xl px-3 py-2">
+                            <div className="w-9 h-9 rounded-full bg-blue-500/20 flex items-center justify-center text-sm font-bold text-blue-400 shrink-0">
+                              {(f.firstName?.[0] ?? '?').toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate">{f.firstName}{f.lastName ? ` ${f.lastName}` : ''}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {minsAgo != null ? `📍 ${minsAgo} мин назад` : 'Геолокация недоступна'}
+                              </div>
+                            </div>
+                            <button onClick={() => void removeFriend(f.friendshipId)} className="text-muted-foreground hover:text-red-400 transition-colors shrink-0">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-10 text-muted-foreground text-sm">
+                Откройте приложение через Telegram для входа в профиль
               </div>
             )}
           </div>
