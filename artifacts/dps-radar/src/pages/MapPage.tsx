@@ -102,8 +102,8 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
 
 // ─── Настройки (localStorage) ─────────────────────────────────────────────────
 const SETTINGS_KEY = 'dps_radar_settings_v1';
-interface RadarSettings { showPosts: boolean; showCameras: boolean; showAccidents: boolean; speedLimit: number }
-const DEFAULT_SETTINGS: RadarSettings = { showPosts: true, showCameras: true, showAccidents: true, speedLimit: 60 };
+interface RadarSettings { showPosts: boolean; showCameras: boolean; showAccidents: boolean }
+const DEFAULT_SETTINGS: RadarSettings = { showPosts: true, showCameras: true, showAccidents: true };
 
 function loadSettings(): RadarSettings {
   try { return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') }; }
@@ -137,7 +137,8 @@ export default function MapPage() {
 
   // настройки
   const [settings,     setSettings]     = React.useState<RadarSettings>(loadSettings);
-  const [showSettings, setShowSettings] = React.useState(false);
+  const [showSettings,     setShowSettings]     = React.useState(false);
+  const [showRouteSearch,  setShowRouteSearch]  = React.useState(false);
 
   // своя метка
   const [customMarkers,   setCustomMarkers]   = React.useState<CustomMarker[]>(loadCustomMarkers);
@@ -296,20 +297,20 @@ export default function MapPage() {
     // OSM камеры
     osmCameras.forEach(cam => {
       const d = haversineMeters(gps.lat, gps.lng, cam.lat, cam.lon);
-      const limit = cam.maxspeed ? parseInt(cam.maxspeed) : settings.speedLimit;
+      const limit = cam.maxspeed ? parseInt(cam.maxspeed) : 60;
       if (!best || d < best.distM)
-        best = { distM: d, limitKmh: isNaN(limit) ? settings.speedLimit : limit, label: cam.name ?? 'Камера' };
+        best = { distM: d, limitKmh: isNaN(limit) ? 60 : limit, label: cam.name ?? 'Камера' };
     });
 
     // Репортованные камеры из базы
     events?.filter(e => e.type === 'camera').forEach(ev => {
       const d = haversineMeters(gps.lat, gps.lng, ev.lat, ev.lng);
       if (!best || d < best.distM)
-        best = { distM: d, limitKmh: settings.speedLimit, label: 'Камера (сообщение)' };
+        best = { distM: d, limitKmh: 60, label: 'Камера (сообщение)' };
     });
 
     setNearestCam(best && (best as NearestCam).distM <= WARN_DIST ? best : null);
-  }, [gps, osmCameras, events, settings.speedLimit]);
+  }, [gps, osmCameras, events]);
 
   // Курсор «прицел» когда добавляем метку
   React.useEffect(() => {
@@ -542,18 +543,41 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* ── Верхний блок: поиск (скрывается во время навигации) ─────────── */}
-      <div className={`relative z-10 w-full p-4 flex flex-col gap-2 pointer-events-none transition-all duration-300 ${isNavigating ? 'opacity-0 pointer-events-none' : ''}`}>
-        <Card className="pointer-events-auto bg-card/90 backdrop-blur-md border-card-border shadow-xl">
-          <CardContent className="p-3 flex flex-col gap-3">
-            {/* Метка города */}
-            <div className="text-xs text-muted-foreground font-medium text-center">
-              📍 {cityConfig.name}
+      {/* ── Кнопка маршрута — сверху по центру ───────────────────────────── */}
+      {!isNavigating && (
+        <div className="absolute z-20 top-3 left-1/2 -translate-x-1/2 pointer-events-auto">
+          <button
+            onClick={() => setShowRouteSearch(true)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-2xl shadow-xl border text-sm font-semibold transition-colors ${
+              routeResult
+                ? 'bg-blue-600 border-blue-500 text-white'
+                : 'bg-card/90 backdrop-blur-md border-border text-foreground hover:bg-card'
+            }`}
+          >
+            <Navigation className="w-4 h-4" />
+            {routeResult ? `${fmt.dist(routeResult.distance)} · ${fmt.time(routeResult.duration)}` : 'Маршрут'}
+          </button>
+        </div>
+      )}
+
+      {/* ── Bottom sheet: поиск маршрута ─────────────────────────────────── */}
+      {showRouteSearch && !isNavigating && (
+        <div className="absolute inset-0 z-40 flex items-end" onClick={() => setShowRouteSearch(false)}>
+          <div
+            className="w-full bg-card border-t border-border rounded-t-3xl p-5 pb-8 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Шапка */}
+            <div className="flex items-center justify-between mb-4">
+              <span className="font-bold text-base">🧭 Маршрут · {cityConfig.name}</span>
+              <button onClick={() => setShowRouteSearch(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             {/* От */}
-            <div className="relative">
-              <div className="flex items-center bg-input/50 rounded-md border border-border focus-within:border-ring px-3 py-2">
+            <div className="relative mb-3">
+              <div className="flex items-center bg-input/50 rounded-xl border border-border focus-within:border-ring px-3 py-2.5">
                 <div className="w-3 h-3 rounded-full bg-blue-500 mr-3 shrink-0" />
                 <input
                   type="text"
@@ -566,9 +590,9 @@ export default function MapPage() {
                 />
               </div>
               {isSearchingFrom && fromResults && fromResults.length > 0 && (
-                <div className="absolute top-full left-0 w-full mt-1 bg-popover border border-border rounded-md shadow-lg overflow-hidden z-50">
+                <div className="absolute bottom-full left-0 w-full mb-1 bg-popover border border-border rounded-xl shadow-lg overflow-hidden z-50">
                   {fromResults.map((r, i) => (
-                    <div key={i} className="p-2 text-sm hover:bg-accent cursor-pointer truncate border-b border-border/50 last:border-0"
+                    <div key={i} className="p-2.5 text-sm hover:bg-accent cursor-pointer truncate border-b border-border/50 last:border-0"
                       onClick={() => { setFromPoint(r); setFromQuery(''); setIsSearchingFrom(false); }}>
                       {r.display_name}
                     </div>
@@ -578,8 +602,8 @@ export default function MapPage() {
             </div>
 
             {/* До */}
-            <div className="relative">
-              <div className="flex items-center bg-input/50 rounded-md border border-border focus-within:border-ring px-3 py-2">
+            <div className="relative mb-4">
+              <div className="flex items-center bg-input/50 rounded-xl border border-border focus-within:border-ring px-3 py-2.5">
                 <div className="w-3 h-3 rounded-full bg-emerald-500 mr-3 shrink-0" />
                 <input
                   type="text"
@@ -592,9 +616,9 @@ export default function MapPage() {
                 />
               </div>
               {isSearchingTo && toResults && toResults.length > 0 && (
-                <div className="absolute top-full left-0 w-full mt-1 bg-popover border border-border rounded-md shadow-lg overflow-hidden z-50">
+                <div className="absolute bottom-full left-0 w-full mb-1 bg-popover border border-border rounded-xl shadow-lg overflow-hidden z-50">
                   {toResults.map((r, i) => (
-                    <div key={i} className="p-2 text-sm hover:bg-accent cursor-pointer truncate border-b border-border/50 last:border-0"
+                    <div key={i} className="p-2.5 text-sm hover:bg-accent cursor-pointer truncate border-b border-border/50 last:border-0"
                       onClick={() => { setToPoint(r); setToQuery(''); setIsSearchingTo(false); }}>
                       {r.display_name}
                     </div>
@@ -603,19 +627,19 @@ export default function MapPage() {
               )}
             </div>
 
-            <Button disabled={!fromPoint || !toPoint || isRouting} onClick={handleCalculateRoute}
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold">
+            <Button
+              disabled={!fromPoint || !toPoint || isRouting}
+              onClick={() => { void handleCalculateRoute(); setShowRouteSearch(false); }}
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold h-11"
+            >
               <Navigation className="w-4 h-4 mr-2" />
               {isRouting ? 'Построение...' : 'Маршрут (минуя посты)'}
             </Button>
-          </CardContent>
-        </Card>
 
-        {routeResult && !isNavigating && (
-          <Card className="pointer-events-auto bg-card/90 backdrop-blur-md border-card-border shadow-xl">
-            <CardContent className="p-3 flex items-center gap-3">
-              <div className="flex-1">
-                <div className="flex gap-4">
+            {/* Результат маршрута прямо в sheet */}
+            {routeResult && (
+              <div className="mt-3 flex items-center gap-3 bg-white/5 rounded-2xl px-4 py-3">
+                <div className="flex gap-5 flex-1">
                   <div>
                     <div className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">В пути</div>
                     <div className="font-bold text-base text-emerald-400">{fmt.time(routeResult.duration)}</div>
@@ -625,18 +649,15 @@ export default function MapPage() {
                     <div className="font-bold text-base text-foreground">{fmt.dist(routeResult.distance)}</div>
                   </div>
                 </div>
+                <Button onClick={() => { setIsNavigating(true); setShowRouteSearch(false); }}
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-4 gap-2">
+                  <Play className="w-4 h-4 fill-white" /> Поехали!
+                </Button>
               </div>
-              <Button
-                onClick={() => setIsNavigating(true)}
-                className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-5 shrink-0 gap-2"
-              >
-                <Play className="w-4 h-4 fill-white" />
-                Поехали!
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex-1" />
 
@@ -698,7 +719,6 @@ export default function MapPage() {
           <button
             onClick={() => {
               if (isAddingMarker) { setIsAddingMarker(false); return; }
-              setIsAddingMarker(false);
               setPendingCoords(null);
               setIsAddingMarker(true);
             }}
@@ -762,26 +782,6 @@ export default function MapPage() {
                 </button>
               </div>
             ))}
-
-            {/* Лимит скорости */}
-            <div className="mt-4">
-              <div className="text-sm font-medium mb-3">⚡ Лимит скорости (предупреждение)</div>
-              <div className="flex gap-2">
-                {[40, 60, 90, 110].map(lim => (
-                  <button
-                    key={lim}
-                    onClick={() => setSettings(s => ({ ...s, speedLimit: lim }))}
-                    className={`flex-1 py-2 text-sm font-bold rounded-xl border transition-colors ${
-                      settings.speedLimit === lim
-                        ? 'bg-primary border-primary text-primary-foreground'
-                        : 'bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10'
-                    }`}
-                  >
-                    {lim}
-                  </button>
-                ))}
-              </div>
-            </div>
 
             {/* Свои метки: список */}
             {customMarkers.length > 0 && (
