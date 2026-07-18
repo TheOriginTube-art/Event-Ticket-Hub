@@ -1,26 +1,18 @@
 #!/bin/bash
 
-echo "=== sites-enabled (точно) ==="
+echo "=== conf.d ==="
+ls -la /etc/nginx/conf.d/
+cat /etc/nginx/conf.d/*.conf 2>/dev/null || echo "пусто"
+
+echo "=== sites-enabled ==="
 ls -la /etc/nginx/sites-enabled/
 
-echo "=== iptables NAT PREROUTING ==="
-iptables -t nat -L PREROUTING -n 2>/dev/null || echo "нет прав / нет правил"
+echo "=== nginx -T (полная конфигурация) ==="
+nginx -T 2>&1 | grep -v "^#" | grep -v "^$"
 
-echo "=== Удаляю default из sites-enabled ==="
-rm -f /etc/nginx/sites-enabled/default
-
-echo "=== Наш dps-radar конфиг ==="
-cat /etc/nginx/sites-available/dps-radar
-
-echo "=== Симлинк ==="
-ln -sf /etc/nginx/sites-available/dps-radar /etc/nginx/sites-enabled/dps-radar
-nginx -t && systemctl reload nginx
-
-echo "=== Кладу файл ==="
+echo "=== Права на /var/www/html ==="
+ls -la /var/www/html/.well-known/acme-challenge/ 2>/dev/null || echo "нет директории"
 echo "ok" > /var/www/html/.well-known/acme-challenge/test
-sleep 1
-
-echo "--- curl verbose на домен ---"
-curl -v --max-time 10 http://ticketflowru.ru/.well-known/acme-challenge/test 2>&1 | grep -E "< |> |ok|404|Connected|Host"
-
-rm -f /var/www/html/.well-known/acme-challenge/test
+ls -la /var/www/html/.well-known/acme-challenge/test
+echo "Nginx user:"
+ps aux | grep nginx | grep -v grep | head -2
