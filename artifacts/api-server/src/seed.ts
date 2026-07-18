@@ -1,6 +1,5 @@
 import { db, eventsTable, seatsTable, sessionsTable, ticketCategoriesTable, venuesTable } from "@workspace/db";
 import { logger } from "./lib/logger";
-import { getUncachableStripeClient } from "./stripeClient";
 import { buildSeatsForCategory } from "./lib/seatGrid";
 
 type PriceTier = { name: string; priceCents: number; seatsTotal: number };
@@ -821,19 +820,11 @@ function sessionDate(daysFromNow: number, hour: number, minute: number): Date {
   return d;
 }
 
-/** Inserts one event (with Stripe product/prices, sessions, ticket categories and seats) into the DB. */
+/** Inserts one event (with sessions, ticket categories and seats) into the DB. */
 async function insertEvent(
   evt: EventDef,
-  stripe: Awaited<ReturnType<typeof getUncachableStripeClient>> | null,
   venueIdByName: Map<string, number>,
 ): Promise<void> {
-  const product = stripe
-    ? await stripe.products.create({
-        name: evt.title,
-        description: evt.description,
-      })
-    : null;
-
   const [eventRow] = await db
     .insert(eventsTable)
     .values({
@@ -846,25 +837,11 @@ async function insertEvent(
       ageRating: evt.ageRating,
       rating: evt.rating,
       sourceName: evt.sourceName,
-      stripeProductId: product?.id,
     })
     .returning();
 
   if (!eventRow) {
     throw new Error(`Failed to insert event ${evt.title}`);
-  }
-
-  const priceIdByTier = new Map<string, string>();
-  if (stripe && product) {
-    for (const tier of evt.priceTiers) {
-      const price = await stripe.prices.create({
-        product: product.id,
-        unit_amount: tier.priceCents,
-        currency: "rub",
-        nickname: tier.name,
-      });
-      priceIdByTier.set(tier.name, price.id);
-    }
   }
 
   for (const sess of evt.sessions) {
@@ -896,7 +873,6 @@ async function insertEvent(
           name: tier.name,
           priceCents: tier.priceCents,
           seatsTotal: tier.seatsTotal,
-          stripePriceId: priceIdByTier.get(tier.name),
         })
         .returning();
 
@@ -921,11 +897,8 @@ async function insertEvent(
 }
 
 /**
- * Seeds demo venues/events/sessions/ticket categories along with matching real
- * Stripe Products (per event) and Prices (per ticket tier). No-op if events
- * already exist. Runs at server boot so it always executes with a fresh,
- * correctly-bound Stripe connector token (unlike a standalone script, which
- * can pick up a stale identity token from a long-lived shell).
+ * Seeds demo venues/events/sessions/ticket categories.
+ * No-op if events already exist. Runs at server boot.
  */
 export async function seedIfEmpty(): Promise<void> {
   const existing = await db.select().from(eventsTable).limit(1);
@@ -934,16 +907,7 @@ export async function seedIfEmpty(): Promise<void> {
     return;
   }
 
-  let stripe: Awaited<ReturnType<typeof getUncachableStripeClient>> | null = null;
-  try {
-    stripe = await getUncachableStripeClient();
-    logger.info("Seeding demo venues, events and Stripe products/prices...");
-  } catch (err) {
-    logger.warn(
-      { err },
-      "Stripe is not connected yet -- seeding demo data without Stripe products/prices. Checkout will be unavailable until Stripe is connected and the data is re-seeded.",
-    );
-  }
+  logger.info("Seeding demo venues and events...");
 
   const venueIdByName = new Map<string, number>();
   for (const v of venueDefs) {
@@ -952,7 +916,7 @@ export async function seedIfEmpty(): Promise<void> {
   }
 
   for (const evt of eventDefs) {
-    await insertEvent(evt, stripe, venueIdByName);
+    await insertEvent(evt, venueIdByName);
   }
 
   logger.info("Demo data seed complete.");
@@ -971,13 +935,6 @@ export async function seedAdditionalEventsIfMissing(): Promise<void> {
     return;
   }
 
-  let stripe: Awaited<ReturnType<typeof getUncachableStripeClient>> | null = null;
-  try {
-    stripe = await getUncachableStripeClient();
-  } catch (err) {
-    logger.warn({ err }, "Stripe is not connected -- seeding additional events without Stripe products/prices.");
-  }
-
   const venues = await db.select().from(venuesTable);
   const venueIdByName = new Map(venues.map((v) => [v.name, v.id]));
 
@@ -989,7 +946,7 @@ export async function seedAdditionalEventsIfMissing(): Promise<void> {
 
   logger.info(`Seeding ${toInsert.length} additional event(s) from other afisha sites...`);
   for (const evt of toInsert) {
-    await insertEvent(evt, stripe, venueIdByName);
+    await insertEvent(evt, venueIdByName);
   }
   logger.info("Additional afisha events seed complete.");
 }
@@ -1007,13 +964,6 @@ export async function seedConcertsIfMissing(): Promise<void> {
     return;
   }
 
-  let stripe: Awaited<ReturnType<typeof getUncachableStripeClient>> | null = null;
-  try {
-    stripe = await getUncachableStripeClient();
-  } catch (err) {
-    logger.warn({ err }, "Stripe is not connected -- seeding concerts without Stripe products/prices.");
-  }
-
   const venues = await db.select().from(venuesTable);
   const venueIdByName = new Map(venues.map((v) => [v.name, v.id]));
 
@@ -1025,7 +975,7 @@ export async function seedConcertsIfMissing(): Promise<void> {
 
   logger.info(`Seeding ${toInsert.length} concert event(s)...`);
   for (const evt of toInsert) {
-    await insertEvent(evt, stripe, venueIdByName);
+    await insertEvent(evt, venueIdByName);
   }
   logger.info("Concert events seed complete.");
 }

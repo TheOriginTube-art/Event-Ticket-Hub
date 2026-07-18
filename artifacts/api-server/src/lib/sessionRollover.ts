@@ -48,7 +48,7 @@ async function pruneOrphanedPastSessions(now: Date): Promise<void> {
  * For every event, makes sure it has at least one session starting within
  * HORIZON_DAYS from now. If not, clones its most recent session (same venue,
  * hall and time of day) forward in ROLLOVER_STEP_DAYS increments -- copying
- * ticket categories (incl. Stripe price ids) and generating a fresh seat map
+ * ticket categories and generating a fresh seat map
  * -- until the schedule reaches the horizon again.
  */
 async function rolloverStaleEvents(now: Date): Promise<void> {
@@ -101,7 +101,6 @@ async function rolloverStaleEvents(now: Date): Promise<void> {
             name: cat.name,
             priceCents: cat.priceCents,
             seatsTotal: cat.seatsTotal,
-            stripePriceId: cat.stripePriceId,
           })
           .returning();
 

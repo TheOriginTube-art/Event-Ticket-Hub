@@ -2,7 +2,6 @@ import { Router, type IRouter } from "express";
 import { eq, inArray } from "drizzle-orm";
 import { db, orderSeatsTable, ordersTable, seatsTable, sessionsTable, ticketCategoriesTable } from "@workspace/db";
 import { CreateCheckoutBody, CreateCheckoutResponse } from "@workspace/api-zod";
-import { getUncachableStripeClient } from "../stripeClient";
 import { logger } from "../lib/logger";
 import { QR_PAYMENT_WINDOW_MINUTES, releaseExpiredOrders } from "../lib/orderExpiry";
 
@@ -48,67 +47,8 @@ router.post("/checkout", async (req, res): Promise<void> => {
   }, 0);
 
   const origin = `${req.protocol}://${req.get("host")}`;
-  const allStripePricesConfigured = seats.every((seat) => categoryById.get(seat.ticketCategoryId)?.stripePriceId);
 
-  if (allStripePricesConfigured) {
-    const [order] = await db
-      .insert(ordersTable)
-      .values({
-        sessionId,
-        userId: req.user?.id ?? null,
-        totalAmountCents,
-        customerName,
-        customerEmail,
-        status: "pending",
-        paymentMethod: "stripe",
-      })
-      .returning();
-
-    if (!order) {
-      res.status(500).json({ error: "Failed to create order" });
-      return;
-    }
-
-    await db.insert(orderSeatsTable).values(
-      seats.map((seat) => ({
-        orderId: order.id,
-        seatId: seat.id,
-        priceCents: categoryById.get(seat.ticketCategoryId)?.priceCents ?? 0,
-      })),
-    );
-
-    try {
-      const stripe = await getUncachableStripeClient();
-      const checkoutSession = await stripe.checkout.sessions.create({
-        mode: "payment",
-        line_items: seats.map((seat) => ({ price: categoryById.get(seat.ticketCategoryId)!.stripePriceId!, quantity: 1 })),
-        customer_email: customerEmail,
-        success_url: `${origin}/checkout/success?orderId=${order.id}`,
-        cancel_url: `${origin}/checkout/cancel?orderId=${order.id}`,
-        metadata: { orderId: String(order.id) },
-      });
-
-      if (!checkoutSession.url) {
-        throw new Error("Stripe did not return a checkout URL");
-      }
-
-      await db
-        .update(ordersTable)
-        .set({ stripeCheckoutSessionId: checkoutSession.id })
-        .where(eq(ordersTable.id, order.id));
-
-      res.json(CreateCheckoutResponse.parse({ url: checkoutSession.url, orderId: order.id }));
-      return;
-    } catch (err) {
-      logger.warn({ err, orderId: order.id }, "Stripe checkout failed, falling back to Ozon QR payment");
-      await createOzonQrPayment(order.id, uniqueSeatIds);
-      res.json(CreateCheckoutResponse.parse({ url: `${origin}/checkout/pay?orderId=${order.id}`, orderId: order.id }));
-      return;
-    }
-  }
-
-  // No Stripe price configured for these seats -- pay via Ozon Bank QR code,
-  // confirmed manually by an admin.
+  // Pay via Ozon Bank QR code, confirmed manually by an admin.
   const [order] = await db
     .insert(ordersTable)
     .values({
@@ -141,16 +81,5 @@ router.post("/checkout", async (req, res): Promise<void> => {
   res.json(CreateCheckoutResponse.parse({ url: `${origin}/checkout/pay?orderId=${order.id}`, orderId: order.id }));
 });
 
-/** Used when a Stripe order was created but the redirect call itself failed. */
-async function createOzonQrPayment(orderId: number, seatIds: number[]): Promise<void> {
-  await db
-    .update(ordersTable)
-    .set({
-      paymentMethod: "ozon_qr",
-      expiresAt: new Date(Date.now() + QR_PAYMENT_WINDOW_MINUTES * 60 * 1000),
-    })
-    .where(eq(ordersTable.id, orderId));
-  await db.update(seatsTable).set({ status: "reserved" }).where(inArray(seatsTable.id, seatIds));
-}
 
 export default router;

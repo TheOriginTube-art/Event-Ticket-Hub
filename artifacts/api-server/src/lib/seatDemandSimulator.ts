@@ -94,7 +94,7 @@ export async function fillSessionRandomly(sessionId: number): Promise<number> {
         customerName: customer.name,
         customerEmail: customer.email,
         status: "paid",
-        paymentMethod: Math.random() < 0.5 ? "ozon_qr" : "stripe",
+        paymentMethod: "ozon_qr",
         confirmedAt: new Date(),
       })
       .returning({ id: ordersTable.id });
