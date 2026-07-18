@@ -111,11 +111,28 @@ docker compose -f deploy/docker-compose.yml logs -f api
 
 ## Обновление
 
+Используйте скрипт `deploy/update.sh` — он сам выполняет `git pull`,
+пересобирает контейнеры и автоматически запускает проверку здоровья бота:
+
 ```bash
 cd /opt/dps-radar
-git pull
-docker compose -f deploy/docker-compose.yml up -d --build
+bash deploy/update.sh
 ```
+
+Скрипт завершится с ненулевым кодом и выведет диагностику, если бот
+или вебхук не отвечают после деплоя.
+
+### Ручная проверка здоровья
+
+Запустить проверку отдельно (без пересборки):
+
+```bash
+bash deploy/healthcheck.sh
+```
+
+Проверяет:
+1. `GET /api/health` — API-сервер отвечает
+2. Telegram `getWebhookInfo` — вебхук зарегистрирован и нет последних ошибок
 
 ## Остановка
 
