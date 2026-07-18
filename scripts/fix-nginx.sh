@@ -1,10 +1,8 @@
 #!/bin/bash
 set -e
 
-# Убираем дефолтный сайт nginx, который перехватывает запросы
 rm -f /etc/nginx/sites-enabled/default
 
-# Пишем наш конфиг
 cat > /etc/nginx/sites-available/dps-radar << 'NGINXEOF'
 server {
     listen 80 default_server;
@@ -23,13 +21,29 @@ server {
 NGINXEOF
 
 ln -sf /etc/nginx/sites-available/dps-radar /etc/nginx/sites-enabled/dps-radar
-mkdir -p /var/www/html
+mkdir -p /var/www/html/.well-known/acme-challenge
+echo "ok" > /var/www/html/.well-known/acme-challenge/test
 nginx -t && systemctl reload nginx
+sleep 1
 
-# Webroot: nginx остаётся запущен, certbot кладёт файл в /var/www/html
+echo "=== Проверка: nginx отдаёт challenge-файл? ==="
+RESULT=$(curl -s http://localhost/.well-known/acme-challenge/test)
+echo "Ответ: $RESULT"
+if [ "$RESULT" != "ok" ]; then
+    echo "ОШИБКА: nginx не отдаёт файл из /var/www/html"
+    echo "Что слушает :80:"
+    ss -tlnp | grep :80
+    echo "Включённые сайты:"
+    ls -la /etc/nginx/sites-enabled/
+    echo "nginx.conf include:"
+    grep include /etc/nginx/nginx.conf
+    exit 1
+fi
+
+rm /var/www/html/.well-known/acme-challenge/test
+echo "=== OK, запускаю certbot ==="
 certbot certonly --webroot -w /var/www/html -d ticketflowru.ru
 
-echo "=== Сертификат получен! Добавляю HTTPS в nginx ==="
 cat > /etc/nginx/sites-available/dps-radar << 'NGINXEOF'
 server {
     listen 80 default_server;
