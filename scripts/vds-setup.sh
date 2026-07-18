@@ -14,6 +14,10 @@ API_DIST="${APP_DIR}/artifacts/api-server/dist/index.mjs"
 API_CWD="${APP_DIR}/artifacts/api-server"
 ECOSYSTEM="${HOME}/ecosystem.config.cjs"
 PORT=8080
+DB_NAME="dpsradar"
+DB_USER="dpsradar"
+DB_PASS="dpsradar_$(tr -dc 'a-z0-9' < /dev/urandom | head -c 12)"
+DB_PASS_FILE="${HOME}/.dpsradar_db_pass"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[✓]${NC} $*"; }
@@ -26,21 +30,77 @@ echo "║       ДПС Радар — настройка сервера         
 echo "╚══════════════════════════════════════════════╝"
 echo ""
 
-# ── 0. Проверка root ──────────────────────────────────────────────────────────
-[[ $EUID -ne 0 ]] && error "Запустите скрипт под root: sudo bash scripts/vds-setup.sh"
+# ── 0. Root ───────────────────────────────────────────────────────────────────
+[[ $EUID -ne 0 ]] && error "Запустите под root: sudo bash scripts/vds-setup.sh"
 
-# ── 1. Зависимости ────────────────────────────────────────────────────────────
-info "Устанавливаю nginx и certbot..."
+# ── 1. Системные пакеты ───────────────────────────────────────────────────────
+info "Устанавливаю пакеты (nginx, certbot, postgresql)..."
 apt-get update -qq
-apt-get install -y -qq nginx certbot python3-certbot-nginx
+apt-get install -y -qq nginx certbot python3-certbot-nginx postgresql postgresql-contrib
 
-# ── 2. Nginx конфиг (HTTP → прокси на Express) ────────────────────────────────
+# ── 2. PostgreSQL ─────────────────────────────────────────────────────────────
+info "Настраиваю PostgreSQL..."
+systemctl enable postgresql
+systemctl start postgresql
+
+# Читаем сохранённый пароль если уже запускали скрипт раньше
+if [[ -f "$DB_PASS_FILE" ]]; then
+    DB_PASS=$(cat "$DB_PASS_FILE")
+    info "Использую существующий пароль БД из ${DB_PASS_FILE}"
+else
+    echo "$DB_PASS" > "$DB_PASS_FILE"
+    chmod 600 "$DB_PASS_FILE"
+fi
+
+# Создаём пользователя и базу (игнорируем ошибку если уже есть)
+sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASS}';" 2>/dev/null || \
+    sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASS}';"
+sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" 2>/dev/null || \
+    warn "База ${DB_NAME} уже существует — пропускаю"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};"
+
+DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}"
+info "DATABASE_URL сформирован"
+
+# ── 3. Читаем остальные переменные из pm2 или файлов ─────────────────────────
+load_from_pm2() {
+    local key="$1"
+    pm2 env 0 2>/dev/null | grep "^${key}:" | head -1 | sed "s/^${key}: //" | xargs || true
+}
+load_from_files() {
+    local key="$1"
+    grep -rh "^${key}=" "${HOME}/.env" "${APP_DIR}/.env" \
+        "${APP_DIR}/artifacts/api-server/.env" 2>/dev/null \
+        | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true
+}
+
+get_var() {
+    local key="$1"; local label="$2"; local secret="${3:-no}"
+    local val
+    val="$(load_from_pm2 "$key")"
+    [[ -z "$val" ]] && val="$(load_from_files "$key")"
+    if [[ -z "$val" ]]; then
+        if [[ "$secret" == "yes" ]]; then
+            read -rsp "  → Введите ${label}: " val; echo ""
+        else
+            read -rp  "  → Введите ${label}: " val
+        fi
+    else
+        info "${key} найден автоматически"
+    fi
+    echo "$val"
+}
+
+SESSION_SECRET="$(get_var SESSION_SECRET "SESSION_SECRET (любая случайная строка)" yes)"
+TG_TOKEN="$(get_var TELEGRAM_BOT_TOKEN "TELEGRAM_BOT_TOKEN" yes)"
+TG_USER="$(get_var TELEGRAM_BOT_USERNAME "TELEGRAM_BOT_USERNAME (без @)" no)"
+
+# ── 4. Nginx ──────────────────────────────────────────────────────────────────
 info "Настраиваю nginx для ${DOMAIN}..."
 cat > /etc/nginx/sites-available/dps-radar << EOF
 server {
     listen 80;
     server_name ${DOMAIN};
-
     client_max_body_size 20M;
 
     location / {
@@ -55,14 +115,13 @@ server {
 }
 EOF
 
-# Убираем дефолтный сайт, включаем наш
 rm -f /etc/nginx/sites-enabled/default
 ln -sf /etc/nginx/sites-available/dps-radar /etc/nginx/sites-enabled/dps-radar
 
 # Освобождаем порт 80 если занят не nginx-ом
 if ss -tlnp | grep -q ':80 ' && ! systemctl is-active --quiet nginx; then
-    warn "Порт 80 занят. Останавливаю Apache/другие сервисы..."
-    systemctl stop apache2 2>/dev/null || true
+    warn "Порт 80 занят — останавливаю Apache..."
+    systemctl stop apache2  2>/dev/null || true
     systemctl disable apache2 2>/dev/null || true
     fuser -k 80/tcp 2>/dev/null || true
     sleep 1
@@ -73,70 +132,19 @@ systemctl enable nginx
 systemctl start nginx 2>/dev/null || systemctl restart nginx
 info "nginx запущен"
 
-# ── 3. SSL-сертификат ─────────────────────────────────────────────────────────
+# ── 5. SSL ────────────────────────────────────────────────────────────────────
 if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
     warn "Сертификат для ${DOMAIN} уже есть — пропускаю certbot"
 else
-    info "Получаю SSL-сертификат (Let's Encrypt)..."
-    warn "Убедитесь, что DNS ${DOMAIN} → $(curl -s ifconfig.me) уже обновился!"
+    info "Получаю SSL-сертификат..."
+    warn "DNS ${DOMAIN} должен указывать на $(curl -s ifconfig.me 2>/dev/null || echo '?')"
     certbot --nginx -d "${DOMAIN}" --non-interactive --agree-tos \
-        --register-unsafely-without-email || {
-        warn "certbot не прошёл. Если домен ещё не указывает на этот IP — запустите скрипт позже."
-        warn "Продолжаю без HTTPS пока что..."
-    }
+        --register-unsafely-without-email && \
+        info "SSL настроен" || \
+        warn "certbot не прошёл — попробуйте позже когда DNS обновится"
 fi
 
-# ── 4. Читаю текущие env-переменные pm2 (чтобы не потерять DATABASE_URL и т.д.) ──
-EXISTING_ENV=""
-if pm2 show api-server &>/dev/null 2>&1; then
-    warn "Читаю переменные из текущего pm2-процесса..."
-    # Достаём переменные, которые точно нужны
-    DB_URL=$(pm2 env 0 2>/dev/null | grep DATABASE_URL | head -1 | sed "s/.*DATABASE_URL: //;s/ .*//") || true
-    SESSION_SEC=$(pm2 env 0 2>/dev/null | grep SESSION_SECRET | head -1 | sed "s/.*SESSION_SECRET: //;s/ .*//") || true
-    TG_TOKEN=$(pm2 env 0 2>/dev/null | grep TELEGRAM_BOT_TOKEN | head -1 | sed "s/.*TELEGRAM_BOT_TOKEN: //;s/ .*//") || true
-    TG_USER=$(pm2 env 0 2>/dev/null | grep TELEGRAM_BOT_USERNAME | head -1 | sed "s/.*TELEGRAM_BOT_USERNAME: //;s/ .*//") || true
-fi
-
-# Если pm2 env не дал результат — пробуем из .env файлов
-load_env_var() {
-    local varname="$1"
-    local val="${!varname:-}"
-    if [[ -z "$val" ]]; then
-        val=$(grep -h "^${varname}=" "${HOME}/.env" "${APP_DIR}/.env" "${APP_DIR}/artifacts/api-server/.env" 2>/dev/null \
-              | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'") || true
-    fi
-    echo "$val"
-}
-
-[[ -z "${DB_URL:-}" ]]      && DB_URL=$(load_env_var DATABASE_URL)
-[[ -z "${SESSION_SEC:-}" ]] && SESSION_SEC=$(load_env_var SESSION_SECRET)
-[[ -z "${TG_TOKEN:-}" ]]    && TG_TOKEN=$(load_env_var TELEGRAM_BOT_TOKEN)
-[[ -z "${TG_USER:-}" ]]     && TG_USER=$(load_env_var TELEGRAM_BOT_USERNAME)
-
-# Просим ввести вручную то, чего не нашли
-prompt_if_empty() {
-    local varname="$1"; local prompt="$2"; local secret="${3:-no}"
-    local val="${!varname:-}"
-    if [[ -z "$val" ]]; then
-        if [[ "$secret" == "yes" ]]; then
-            read -rsp "  → Введите ${prompt}: " val; echo ""
-        else
-            read -rp  "  → Введите ${prompt}: " val
-        fi
-    fi
-    eval "$varname=\"$val\""
-}
-
-echo ""
-echo "─── Переменные окружения ────────────────────────"
-prompt_if_empty DB_URL      "DATABASE_URL (postgres://...)"       yes
-prompt_if_empty SESSION_SEC "SESSION_SECRET (случайная строка)"   yes
-prompt_if_empty TG_TOKEN    "TELEGRAM_BOT_TOKEN"                  yes
-prompt_if_empty TG_USER     "TELEGRAM_BOT_USERNAME (без @)"       no
-echo "─────────────────────────────────────────────────"
-echo ""
-
-# ── 5. Пишу ecosystem.config.cjs ─────────────────────────────────────────────
+# ── 6. Ecosystem pm2 ─────────────────────────────────────────────────────────
 info "Создаю ${ECOSYSTEM}..."
 cat > "${ECOSYSTEM}" << EOF
 module.exports = {
@@ -150,8 +158,8 @@ module.exports = {
       NODE_ENV:              'production',
       PORT:                  '${PORT}',
       PUBLIC_BASE_URL:       '${PUBLIC_BASE_URL}',
-      DATABASE_URL:          '${DB_URL}',
-      SESSION_SECRET:        '${SESSION_SEC}',
+      DATABASE_URL:          '${DATABASE_URL}',
+      SESSION_SECRET:        '${SESSION_SECRET}',
       TELEGRAM_BOT_TOKEN:    '${TG_TOKEN}',
       TELEGRAM_BOT_USERNAME: '${TG_USER}',
     }
@@ -159,8 +167,8 @@ module.exports = {
 }
 EOF
 
-# ── 6. Сборка ─────────────────────────────────────────────────────────────────
-info "Обновляю код..."
+# ── 7. Сборка ─────────────────────────────────────────────────────────────────
+info "git pull..."
 cd "${APP_DIR}"
 git pull
 
@@ -170,23 +178,24 @@ pnpm --filter @workspace/api-server run build
 info "Собираю фронтенд..."
 BASE_PATH=/dps-radar/ pnpm --filter @workspace/dps-radar run build
 
-# ── 7. Перезапуск pm2 ────────────────────────────────────────────────────────
+info "Применяю миграции БД..."
+DATABASE_URL="${DATABASE_URL}" pnpm --filter db push
+
+# ── 8. pm2 ────────────────────────────────────────────────────────────────────
 info "Перезапускаю pm2..."
 pm2 delete api-server 2>/dev/null || true
 pm2 start "${ECOSYSTEM}"
 pm2 save
-pm2 startup 2>/dev/null | tail -1 | bash 2>/dev/null || true
+pm2 startup 2>/dev/null | grep "^sudo" | bash 2>/dev/null || true
 
-# ── 8. Итог ──────────────────────────────────────────────────────────────────
+# ── 9. Итог ───────────────────────────────────────────────────────────────────
 echo ""
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║  Готово!                                                 ║"
-echo "║                                                          ║"
-echo "║  Мини-приложение: https://${DOMAIN}/dps-radar/  ║"
-echo "║  Webhook бота:    https://${DOMAIN}/api/dps-radar/      ║"
-echo "║                   telegram-webhook                       ║"
-echo "║                                                          ║"
-echo "║  Логи:  pm2 logs api-server                              ║"
-echo "║  Стат:  pm2 monit                                        ║"
-echo "╚══════════════════════════════════════════════════════════╝"
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  Готово!                                                     ║"
+printf "║  Мини-приложение:  https://%-35s║\n" "${DOMAIN}/dps-radar/"
+printf "║  Пароль БД сохранён в: %-38s║\n" "${DB_PASS_FILE}"
+echo "║                                                              ║"
+echo "║  Логи:   pm2 logs api-server                                 ║"
+echo "║  Статус: pm2 monit                                           ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
