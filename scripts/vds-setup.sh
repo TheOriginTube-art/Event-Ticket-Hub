@@ -97,11 +97,17 @@ TG_USER="$(get_var TELEGRAM_BOT_USERNAME "TELEGRAM_BOT_USERNAME (без @)" no)"
 
 # ── 4. Nginx ──────────────────────────────────────────────────────────────────
 info "Настраиваю nginx для ${DOMAIN}..."
+mkdir -p /var/www/html
 cat > /etc/nginx/sites-available/dps-radar << EOF
 server {
     listen 80;
     server_name ${DOMAIN};
     client_max_body_size 20M;
+
+    # Certbot ACME-challenge — не проксируем, отдаём файлом
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
 
     location / {
         proxy_pass         http://localhost:${PORT};
