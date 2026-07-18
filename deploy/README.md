@@ -62,7 +62,7 @@ sudo ln -s /etc/nginx/sites-available/dps-radar /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-### 4. Создайте таблицы в БД (один раз при первом запуске)
+### 4. Примените миграции БД
 
 ```bash
 cd /opt/dps-radar
@@ -70,14 +70,19 @@ cd /opt/dps-radar
 # Сначала поднимаем только postgres и ждём, пока он станет healthy
 docker compose -f deploy/docker-compose.yml up -d postgres
 
-# Применяем схему через drizzle-kit push
-# (сервис migrate использует builder-образ с pnpm и исходниками)
+# Применяем все миграции из lib/db/migrations/ через drizzle-kit migrate
+# (сервис migrate использует builder-образ с pnpm и исходниками drizzle-kit)
 docker compose -f deploy/docker-compose.yml \
   --profile migrate run --rm migrate
 ```
 
-Команда завершится без ошибок и выведет список применённых таблиц.
-После этого сервис автоматически остановится.
+Drizzle записывает в таблицу `__drizzle_migrations` какие файлы уже применены,
+поэтому повторный запуск безопасен — уже применённые миграции пропускаются.
+После завершения сервис автоматически остановится.
+
+> **При каждом обновлении** (если схема изменилась) запускайте тот же
+> `docker compose … run --rm migrate` — скрипт `deploy/update.sh` делает
+> это автоматически.
 
 ### 5. Запустите всё
 
@@ -109,10 +114,85 @@ docker compose -f deploy/docker-compose.yml logs -f api
 
 ---
 
+## Миграции схемы БД
+
+Схема хранится в `lib/db/src/schema/`. Миграционные файлы живут в
+`lib/db/migrations/` и коммитятся в репозиторий.
+
+### Как изменить схему
+
+1. Внесите изменения в файлы `lib/db/src/schema/*.ts`.
+2. Сгенерируйте новый SQL-файл миграции:
+
+   ```bash
+   # Запускается локально (DATABASE_URL нужен только как заглушка — к БД не подключается)
+   DATABASE_URL=postgresql://x:x@localhost/x \
+     pnpm --filter @workspace/db run generate
+   ```
+
+   В `lib/db/migrations/` появится новый файл вида `0001_*.sql`.
+
+3. Закоммитьте сгенерированный файл вместе с изменениями схемы.
+4. При следующем деплое `update.sh` автоматически применит новую миграцию.
+
+> **Важно:** никогда не редактируйте существующие файлы миграций вручную —
+> Drizzle сверяет хеши. Для исправления ошибки создайте новую миграцию.
+
+### Применить миграции вручную (без полного деплоя)
+
+```bash
+cd /opt/dps-radar
+docker compose -f deploy/docker-compose.yml --profile migrate run --rm migrate
+```
+
+### Переход с drizzle-kit push на миграции (один раз на каждый стенд)
+
+Если база данных уже была инициализирована командой `drizzle-kit push`
+(без истории миграций), перед первым запуском `update.sh` необходимо
+выполнить разовую процедуру *baseline*.
+
+> **Почему это нужно?**
+> Файл миграции `0000_useful_tarot.sql` содержит `CREATE TABLE` / `CREATE TYPE`
+> для всех таблиц. На пустой базе это нормально. На уже существующей базе
+> PostgreSQL выдаст ошибку «already exists». Скрипт `baseline.sh` регистрирует
+> миграцию `0000` как «уже применённую» в таблице отслеживания Drizzle
+> (`drizzle.__drizzle_migrations`), не затрагивая сами данные.
+
+**Шаги (выполнить один раз):**
+
+1. Убедитесь, что контейнер `postgres` запущен:
+
+   ```bash
+   docker compose -f deploy/docker-compose.yml up -d postgres
+   ```
+
+2. Запустите baseline-скрипт, передав `DATABASE_URL`:
+
+   ```bash
+   DATABASE_URL=postgresql://dpsradar:<password>@localhost:5432/dpsradar \
+     bash deploy/baseline.sh
+   ```
+
+   Скрипт идемпотентен — повторный запуск безопасен.
+
+3. Убедитесь, что скрипт завершился с сообщением `Baseline complete`, затем
+   продолжайте деплой как обычно:
+
+   ```bash
+   bash deploy/update.sh
+   ```
+
+`update.sh` сам проверяет наличие таблицы отслеживания и завершится с
+понятной ошибкой, если baseline не был выполнен, — это защита от случайного
+запуска migrate на push-based базе.
+
+---
+
 ## Обновление
 
 Используйте скрипт `deploy/update.sh` — он сам выполняет `git pull`,
-пересобирает контейнеры и автоматически запускает проверку здоровья бота:
+применяет миграции БД, пересобирает контейнеры и запускает проверку
+здоровья бота:
 
 ```bash
 cd /opt/dps-radar
