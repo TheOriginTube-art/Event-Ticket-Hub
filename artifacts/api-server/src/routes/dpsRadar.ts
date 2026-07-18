@@ -440,7 +440,7 @@ const OSM_QUERY = `[out:json][timeout:20];(node["highway"="speed_camera"](${OSM_
 let osmCache: { ts: number; data: unknown } | null = null;
 const OSM_TTL = 24 * 60 * 60 * 1000;
 
-router.get("/osm-cameras", async (_req, res) => {
+router.get("/dps-radar/osm-cameras", async (_req, res) => {
   try {
     if (osmCache && Date.now() - osmCache.ts < OSM_TTL) {
       return res.json(osmCache.data);
