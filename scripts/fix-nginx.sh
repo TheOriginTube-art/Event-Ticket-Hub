@@ -1,62 +1,83 @@
 #!/bin/bash
 set -e
 
-echo "=== Ищу nginx конфиг для ticketflowru.ru ==="
-CONF=$(grep -rl "ticketflowru.ru" /etc/nginx/ 2>/dev/null | head -1)
-if [ -z "$CONF" ]; then
-    echo "ОШИБКА: конфиг не найден"
-    exit 1
-fi
-echo "Найден: $CONF"
+API_PORT=8080
+CONF=/etc/nginx/sites-available/dps-radar
 
-echo "=== Ищу порт API-сервера (pm2) ==="
-API_PORT=$(pm2 env 0 2>/dev/null | grep "^PORT:" | awk '{print $2}' | tr -d '[:space:]')
-if [ -z "$API_PORT" ]; then
-    API_PORT=$(pm2 list 2>/dev/null | grep api-server | head -1 || true)
-    # Проверяем стандартные порты
-    for p in 8080 3000 4000 5000; do
-        if ss -tlnp | grep -q ":$p "; then
-            API_PORT=$p
-            break
-        fi
-    done
-fi
-echo "Порт API: ${API_PORT:-не найден, используем 8080}"
-API_PORT=${API_PORT:-8080}
+echo "=== Пишу чистый nginx конфиг ==="
+mkdir -p /var/www/html/.well-known/acme-challenge
+cat > "$CONF" << 'NGINXEOF'
+server {
+    listen 80;
+    server_name ticketflowru.ru;
 
-echo "=== Добавляю DPS Радар в $CONF ==="
-# Проверяем, не добавлен ли уже
-if grep -q "dps-radar" "$CONF"; then
-    echo "Уже есть, пропускаю"
-else
-    # Вставляем location блоки перед последней закрывающей }
-    sed -i "s|}$|    location /dps-radar/ {\n        proxy_pass http://localhost:${API_PORT}/dps-radar/;\n        proxy_set_header Host \$host;\n        proxy_set_header X-Forwarded-Proto \$scheme;\n    }\n    location /api/dps-radar/ {\n        proxy_pass http://localhost:${API_PORT}/api/dps-radar/;\n        proxy_set_header Host \$host;\n    }\n}|" "$CONF"
-fi
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
 
-echo "=== Добавляю ACME challenge для certbot ==="
-if ! grep -q "acme-challenge" "$CONF"; then
-    mkdir -p /var/www/html/.well-known/acme-challenge
-    sed -i "s|}$|    location /.well-known/acme-challenge/ {\n        root /var/www/html;\n    }\n}|" "$CONF"
-fi
+    location /dps-radar/ {
+        proxy_pass http://localhost:8080/dps-radar/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
 
+    location /api/dps-radar/ {
+        proxy_pass http://localhost:8080/api/dps-radar/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+NGINXEOF
+
+ln -sf "$CONF" /etc/nginx/sites-enabled/dps-radar
 nginx -t && systemctl reload nginx
 
-echo "=== Тест: nginx отдаёт challenge? ==="
+echo "=== Тест ACME ==="
 echo "ok" > /var/www/html/.well-known/acme-challenge/test
 sleep 1
-RESULT=$(curl -s --max-time 5 http://localhost/.well-known/acme-challenge/test || echo "fail")
-echo "Ответ: $RESULT"
+RESULT=$(curl -s --max-time 5 -H "Host: ticketflowru.ru" http://localhost/.well-known/acme-challenge/test || echo "FAIL")
+echo "Ответ localhost: $RESULT"
 rm -f /var/www/html/.well-known/acme-challenge/test
 
 if [ "$RESULT" != "ok" ]; then
-    echo "ОШИБКА: nginx не отдаёт файл. Конфиг:"
-    cat "$CONF"
+    echo "nginx не отдаёт файл! Проверяю что слушает :80:"
+    ss -tlnp | grep :80
+    echo "Все включённые сайты:"
+    ls /etc/nginx/sites-enabled/
     exit 1
 fi
 
 echo "=== Получаю SSL сертификат ==="
 certbot certonly --webroot -w /var/www/html -d ticketflowru.ru
 
-echo "=== Готово! Сертификат получен ==="
-echo "Теперь добавьте в $CONF listen 443 ssl и ssl_certificate вручную"
-echo "Или запустите: certbot --nginx -d ticketflowru.ru"
+echo "=== Добавляю HTTPS ==="
+cat > "$CONF" << 'NGINXEOF'
+server {
+    listen 80;
+    server_name ticketflowru.ru;
+    return 301 https://$host$request_uri;
+}
+server {
+    listen 443 ssl;
+    server_name ticketflowru.ru;
+    ssl_certificate /etc/letsencrypt/live/ticketflowru.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/ticketflowru.ru/privkey.pem;
+
+    location /dps-radar/ {
+        proxy_pass http://localhost:8080/dps-radar/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /api/dps-radar/ {
+        proxy_pass http://localhost:8080/api/dps-radar/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+NGINXEOF
+
+nginx -t && systemctl reload nginx
+echo "=== Готово! https://ticketflowru.ru/dps-radar/ ==="
