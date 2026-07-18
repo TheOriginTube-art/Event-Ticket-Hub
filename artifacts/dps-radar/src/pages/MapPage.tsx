@@ -2,7 +2,7 @@ import React from 'react';
 import * as L from 'leaflet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Navigation, Settings, MapPin, X, Check, Trash2, Camera } from 'lucide-react';
+import { Navigation, Settings, MapPin, X, Check, Trash2, Camera, Play, Square } from 'lucide-react';
 import { useListDpsEvents, useGetDpsStats } from '@workspace/api-client-react';
 import { GeocodeResult, useGeocodeSearch } from '@/lib/nominatim';
 import { fetchOsrmRoute, calculateAvoidanceWaypoints, RouteResult } from '@/lib/osrm';
@@ -41,12 +41,22 @@ const makeCircleIcon = (color: string, size: number, border = '#1e293b') =>
     popupAnchor: [0, -size / 2],
   });
 
-const dpsIcon      = makeCircleIcon('hsl(45,93%,47%)', 24);   // amber — пост ДПС
-const cameraIcon   = makeCircleIcon('hsl(187,86%,53%)', 16);  // cyan — камера (меньше!)
-const accidentIcon = makeCircleIcon('hsl(0,84%,60%)', 22);    // red — авария
+const dpsIcon      = makeCircleIcon('hsl(45,93%,47%)', 24);
+const cameraIcon   = makeCircleIcon('hsl(187,86%,53%)', 16);
+const accidentIcon = makeCircleIcon('hsl(0,84%,60%)', 22);
 const originIcon   = makeCircleIcon('#3b82f6', 20);
 const destIcon     = makeCircleIcon('#10b981', 20);
-const customIcon   = makeCircleIcon('#a855f7', 20, '#7c3aed'); // purple — своя метка
+const customIcon   = makeCircleIcon('#a855f7', 20, '#7c3aed');
+
+// Иконка текущей позиции пользователя (навигация)
+const userLocationIcon = L.divIcon({
+  className: '',
+  html: `<div style="position:relative;width:24px;height:24px">
+    <div style="width:24px;height:24px;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 0 0 4px rgba(59,130,246,.35)"></div>
+  </div>`,
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+});
 
 // ─── Своя метка (localStorage) ────────────────────────────────────────────────
 const STORAGE_KEY = 'dps_custom_markers_v1';
@@ -110,10 +120,11 @@ export default function MapPage() {
 
   const mapRef           = React.useRef<L.Map | null>(null);
   const mapContainerRef  = React.useRef<HTMLDivElement>(null);
-  const eventsLayerRef   = React.useRef<L.LayerGroup>(new L.LayerGroup());
-  const customLayerRef   = React.useRef<L.LayerGroup>(new L.LayerGroup());
+  const eventsLayerRef    = React.useRef<L.LayerGroup>(new L.LayerGroup());
+  const customLayerRef    = React.useRef<L.LayerGroup>(new L.LayerGroup());
   const osmCameraLayerRef = React.useRef<L.LayerGroup>(new L.LayerGroup());
-  const routeLayerRef    = React.useRef<L.GeoJSON | null>(null);
+  const routeLayerRef     = React.useRef<L.GeoJSON | null>(null);
+  const userMarkerRef     = React.useRef<L.Marker | null>(null);
 
   // маршрут
   const [fromQuery, setFromQuery] = React.useState('');
@@ -122,8 +133,9 @@ export default function MapPage() {
   const [toPoint,   setToPoint]   = React.useState<GeocodeResult | null>(null);
   const [isSearchingFrom, setIsSearchingFrom] = React.useState(false);
   const [isSearchingTo,   setIsSearchingTo]   = React.useState(false);
-  const [routeResult, setRouteResult] = React.useState<RouteResult | null>(null);
-  const [isRouting,   setIsRouting]   = React.useState(false);
+  const [routeResult,   setRouteResult]   = React.useState<RouteResult | null>(null);
+  const [isRouting,     setIsRouting]     = React.useState(false);
+  const [isNavigating,  setIsNavigating]  = React.useState(false);
 
   // настройки
   const [settings,     setSettings]     = React.useState<RadarSettings>(loadSettings);
@@ -211,6 +223,46 @@ export default function MapPage() {
 
   // Синхронизируем ref с state для использования внутри замыкания карты
   React.useEffect(() => { isAddingRef.current = isAddingMarker; }, [isAddingMarker]);
+
+  // ── Навигация: следим за GPS и ведём карту за пользователем ───────────────
+  React.useEffect(() => {
+    if (!isNavigating || !gps || !mapRef.current) return;
+    const map = mapRef.current;
+    // Центрируем карту на позиции
+    map.setView([gps.lat, gps.lng], Math.max(map.getZoom(), 16), { animate: true, duration: 0.5 });
+    // Маркер позиции
+    if (!userMarkerRef.current) {
+      userMarkerRef.current = L.marker([gps.lat, gps.lng], { icon: userLocationIcon, zIndexOffset: 1000 }).addTo(map);
+    } else {
+      userMarkerRef.current.setLatLng([gps.lat, gps.lng]);
+    }
+  }, [isNavigating, gps]);
+
+  // Убираем маркер позиции при выходе из навигации
+  React.useEffect(() => {
+    if (!isNavigating && userMarkerRef.current && mapRef.current) {
+      mapRef.current.removeLayer(userMarkerRef.current);
+      userMarkerRef.current = null;
+    }
+  }, [isNavigating]);
+
+  // ── Маршрут к своей метке через кастомное событие ──────────────────────────
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const { lat, lng, label } = (e as CustomEvent<{ lat: number; lng: number; label: string }>).detail;
+      setToPoint({ lat: String(lat), lon: String(lng), display_name: label });
+      setToQuery('');
+      // Если GPS доступен — ставим «Откуда» = текущая позиция
+      if (gps) {
+        setFromPoint({ lat: String(gps.lat), lon: String(gps.lng), display_name: 'Моё местоположение' });
+      }
+      // Закрываем попапы
+      mapRef.current?.closePopup();
+    };
+    window.addEventListener('routeToMarker', handler);
+    return () => window.removeEventListener('routeToMarker', handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gps]);
 
   // ── Загрузка OSM камер ─────────────────────────────────────────────────────
   React.useEffect(() => {
@@ -314,11 +366,15 @@ export default function MapPage() {
     customMarkers.forEach(cm => {
       const marker = L.marker([cm.lat, cm.lng], { icon: customIcon });
       marker.bindPopup(`
-        <div style="min-width:140px">
-          <div style="font-weight:700;margin-bottom:6px">📍 ${escHtml(cm.label)}</div>
+        <div style="min-width:160px">
+          <div style="font-weight:700;margin-bottom:8px">📍 ${escHtml(cm.label)}</div>
+          <button
+            onclick="window.dispatchEvent(new CustomEvent('routeToMarker',{detail:{lat:${cm.lat},lng:${cm.lng},label:'${escHtml(cm.label)}'}}));this.closest('.leaflet-popup').querySelector('.leaflet-popup-close-button')?.click()"
+            style="width:100%;margin-bottom:6px;padding:6px 10px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:.8em;font-weight:700;cursor:pointer"
+          >🧭 Маршрут сюда</button>
           <button
             onclick="window.dispatchEvent(new CustomEvent('deleteCustomMarker',{detail:'${cm.id}'}))"
-            style="font-size:.75em;color:#f87171;cursor:pointer;border:none;background:none;padding:0"
+            style="width:100%;padding:4px;background:none;color:#f87171;border:none;font-size:.75em;cursor:pointer"
           >🗑 Удалить метку</button>
         </div>
       `);
@@ -457,8 +513,40 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* ── Верхний блок: поиск ────────────────────────────────────────── */}
-      <div className="relative z-10 w-full p-4 flex flex-col gap-2 pointer-events-none">
+      {/* ── Навигационный HUD (поверх карты, заменяет поиск) ─────────────── */}
+      {isNavigating && routeResult && (
+        <div className="absolute z-30 top-0 left-0 right-0 p-3 flex flex-col gap-2 pointer-events-none">
+          {/* Строка с информацией о маршруте */}
+          <div className="pointer-events-auto flex items-center gap-3 bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-2xl px-4 py-3 shadow-2xl">
+            <div className="flex-1 flex gap-5">
+              <div>
+                <div className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider">Осталось</div>
+                <div className="font-black text-lg text-emerald-400 leading-none">{fmt.time(routeResult.duration)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider">Дистанция</div>
+                <div className="font-black text-lg text-white leading-none">{fmt.dist(routeResult.distance)}</div>
+              </div>
+              {toPoint && (
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider">Куда</div>
+                  <div className="text-sm text-slate-200 font-medium truncate leading-none mt-0.5">{toPoint.display_name}</div>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => setIsNavigating(false)}
+              className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold px-3 py-2 rounded-xl shrink-0 transition-colors"
+            >
+              <Square className="w-3.5 h-3.5 fill-white" />
+              Стоп
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Верхний блок: поиск (скрывается во время навигации) ─────────── */}
+      <div className={`relative z-10 w-full p-4 flex flex-col gap-2 pointer-events-none transition-all duration-300 ${isNavigating ? 'opacity-0 pointer-events-none' : ''}`}>
         <Card className="pointer-events-auto bg-card/90 backdrop-blur-md border-card-border shadow-xl">
           <CardContent className="p-3 flex flex-col gap-3">
             {/* Метка города */}
@@ -526,17 +614,28 @@ export default function MapPage() {
           </CardContent>
         </Card>
 
-        {routeResult && (
+        {routeResult && !isNavigating && (
           <Card className="pointer-events-auto bg-card/90 backdrop-blur-md border-card-border shadow-xl">
-            <CardContent className="p-3 flex items-center justify-between">
-              <div>
-                <div className="text-xs text-muted-foreground uppercase font-semibold tracking-wider">В пути</div>
-                <div className="font-bold text-lg text-emerald-400">{fmt.time(routeResult.duration)}</div>
+            <CardContent className="p-3 flex items-center gap-3">
+              <div className="flex-1">
+                <div className="flex gap-4">
+                  <div>
+                    <div className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">В пути</div>
+                    <div className="font-bold text-base text-emerald-400">{fmt.time(routeResult.duration)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">Расстояние</div>
+                    <div className="font-bold text-base text-foreground">{fmt.dist(routeResult.distance)}</div>
+                  </div>
+                </div>
               </div>
-              <div className="text-right">
-                <div className="text-xs text-muted-foreground uppercase font-semibold tracking-wider">Дистанция</div>
-                <div className="font-bold text-lg text-foreground">{fmt.dist(routeResult.distance)}</div>
-              </div>
+              <Button
+                onClick={() => setIsNavigating(true)}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-5 shrink-0 gap-2"
+              >
+                <Play className="w-4 h-4 fill-white" />
+                Поехали!
+              </Button>
             </CardContent>
           </Card>
         )}
