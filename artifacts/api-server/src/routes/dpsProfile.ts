@@ -2,55 +2,19 @@
  * Profile, friends, and real-time location sharing for DPS Radar Telegram Mini App.
  */
 import { Router, type Request, type Response, type NextFunction } from "express";
-import crypto from "crypto";
 import { db, telegramUsersTable, friendshipsTable, dpsEventsTable } from "@workspace/db";
 import { eq, or, and, count, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { verifyTelegramInitData, type TelegramUser } from "../lib/telegramAuth";
 
 const router = Router();
 
-interface TgUserPayload {
-  id: number;
-  username?: string;
-  first_name?: string;
-  last_name?: string;
-  photo_url?: string;
-}
+type TgUserPayload = Pick<TelegramUser, "id" | "username" | "first_name" | "last_name" | "photo_url">;
 
 // ── Telegram initData verification ───────────────────────────────────────────
-function verifyInitData(
-  initData: string,
-  botToken: string,
-): { user: TgUserPayload } | null {
-  try {
-    const params = new URLSearchParams(initData);
-    const hash = params.get("hash");
-    if (!hash) return null;
-    params.delete("hash");
-
-    const dataCheckString = [...params.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}=${v}`)
-      .join("\n");
-
-    const secretKey = crypto
-      .createHmac("sha256", "WebAppData")
-      .update(botToken)
-      .digest();
-    const computedHash = crypto
-      .createHmac("sha256", secretKey)
-      .update(dataCheckString)
-      .digest("hex");
-
-    if (computedHash !== hash) return null;
-
-    const userRaw = params.get("user");
-    if (!userRaw) return null;
-    return { user: JSON.parse(userRaw) as TgUserPayload };
-  } catch {
-    return null;
-  }
-}
+// Uses the shared verifyTelegramInitData from telegramAuth.ts which performs:
+//   1. HMAC-SHA256 signature check
+//   2. auth_date freshness check (TTL from TELEGRAM_INIT_DATA_MAX_AGE_SECS, default 24 h)
 
 // Middleware — parse & verify initData, attach tgUser to req
 function requireTgUser(req: Request, res: Response, next: NextFunction): void {
@@ -63,29 +27,38 @@ function requireTgUser(req: Request, res: Response, next: NextFunction): void {
       next();
       return;
     }
-    res.status(503).json({ error: "Bot token not configured" });
+    // Without a token in dev, allow null user (unauthenticated testing)
+    (req as Request & { tgUser: TgUserPayload | null }).tgUser = null;
+    next();
     return;
   }
 
   const initData =
-    (req.body as Record<string, string>)?.initData ??
-    (req.headers["x-init-data"] as string) ??
-    (req.headers["x-telegram-init-data"] as string);
+    (req.body as Record<string, string> | undefined)?.initData ??
+    (req.headers["x-init-data"] as string | undefined) ??
+    (req.headers["x-telegram-init-data"] as string | undefined) ??
+    (req.headers.authorization?.startsWith("tma ") ? req.headers.authorization.slice(4) : undefined);
 
   if (!initData) {
     logger.warn("profile auth: initData missing");
-    res.status(401).json({ error: "initData required" });
+    res.status(401).json({ error: "initData required", code: "missing_init_data" });
     return;
   }
 
-  const parsed = verifyInitData(initData, token);
-  if (!parsed) {
-    logger.warn({ initDataLen: initData.length, initDataSnippet: initData.slice(0, 60) }, "profile auth: HMAC failed");
-    res.status(401).json({ error: "Invalid Telegram initData" });
+  const result = verifyTelegramInitData(initData, token);
+
+  if (!result.ok) {
+    logger.warn(
+      { reason: result.reason, initDataLen: initData.length, initDataSnippet: initData.slice(0, 60) },
+      `profile auth: verification failed (${result.reason})`,
+    );
+    const status = result.reason === "parse_error" ? 400 : 401;
+    res.status(status).json({ error: "Invalid Telegram initData", code: result.reason });
     return;
   }
 
-  (req as Request & { tgUser: TgUserPayload }).tgUser = parsed.user;
+  logger.debug({ userId: result.user.id, authDate: result.authDate }, "profile auth: ok");
+  (req as Request & { tgUser: TgUserPayload }).tgUser = result.user;
   next();
 }
 
