@@ -166,6 +166,8 @@ export default function MapPage() {
   const [addMsg,      setAddMsg]      = React.useState('');
   const [syncStatus,  setSyncStatus]  = React.useState<'idle'|'syncing'|'ok'|'error'>('idle');
   const [syncError,   setSyncError]   = React.useState('');
+  const [pendingCount, setPendingCount] = React.useState(0);
+  const prevPendingCountRef = React.useRef(0);
   const friendLocLayerRef = React.useRef<L.LayerGroup>(new L.LayerGroup());
 
   const BASE = (import.meta.env.BASE_URL as string) ?? '/dps-radar/';
@@ -451,29 +453,6 @@ export default function MapPage() {
     return () => clearInterval(t);
   }, [tgInitData]);
 
-  // ── Запросы дружбы: фоновый поллинг каждые 15 сек ────────────────────────
-  React.useEffect(() => {
-    if (!tgInitData) return;
-    const poll = () =>
-      fetch(`${BASE}api/dps-radar/friends`, { headers: { 'x-init-data': tgInitData } })
-        .then(r => r.ok ? r.json() : null)
-        .then((j: { friends: Friend[]; pending: Friend[] } | null) => {
-          if (!j) return;
-          // Показать уведомление если появился новый запрос
-          setPendingFr(prev => {
-            if (j.pending.length > prev.length) {
-              // Новый запрос — вибрация если доступна
-              try { window.navigator.vibrate?.(100); } catch {}
-            }
-            return j.pending;
-          });
-          setFriends(j.friends);
-        })
-        .catch(() => {});
-    poll();
-    const t = setInterval(poll, 15_000);
-    return () => clearInterval(t);
-  }, [tgInitData]);
 
   // ── Друзья на карте ───────────────────────────────────────────────────────
   React.useEffect(() => {
@@ -632,9 +611,28 @@ export default function MapPage() {
     const j = await r.json() as { friends: Friend[]; pending: Friend[] };
     setFriends(j.friends);
     setPendingFr(j.pending);
-  }, [tgInitData]);
+    // Track pending count and trigger haptic when new requests arrive
+    const newCount = j.pending.length;
+    if (newCount > prevPendingCountRef.current) {
+      try {
+        const tg = (window as Record<string, any>).Telegram?.WebApp;
+        tg?.HapticFeedback?.notificationOccurred('success');
+      } catch {}
+    }
+    prevPendingCountRef.current = newCount;
+    setPendingCount(newCount);
+  }, [tgInitData, BASE]);
 
+  // Load friends when profile sheet opens (for immediate freshness)
   React.useEffect(() => { if (showProfileSheet) void loadFriends(); }, [showProfileSheet, loadFriends]);
+
+  // Background polling: check pending friend requests every 30s while the app is open
+  React.useEffect(() => {
+    if (!tgInitData) return;
+    void loadFriends(); // initial call
+    const t = setInterval(() => void loadFriends(), 30_000);
+    return () => clearInterval(t);
+  }, [tgInitData, loadFriends]);
 
   const toggleSharing = async () => {
     if (!tgInitData) return;
@@ -1217,11 +1215,11 @@ export default function MapPage() {
               onClick={() => setShowProfileSheet(true)}
               className="relative flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border bg-blue-500/10 border-blue-500/30 text-blue-400 active:bg-blue-500/25 transition-colors"
             >
-              <User className="w-3.5 h-3.5 shrink-0" />
+              <Users className="w-3.5 h-3.5 shrink-0" />
               <span>Профиль</span>
-              {pendingFr.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
-                  {pendingFr.length}
+              {pendingCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 shadow-md leading-none">
+                  {pendingCount > 9 ? '9+' : pendingCount}
                 </span>
               )}
             </button>
