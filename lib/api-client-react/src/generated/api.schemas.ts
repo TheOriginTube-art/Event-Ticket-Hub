@@ -417,6 +417,7 @@ export type DpsEventType = typeof DpsEventType[keyof typeof DpsEventType];
 export const DpsEventType = {
   dps_post: 'dps_post',
   accident: 'accident',
+  camera: 'camera',
 } as const;
 
 export interface DpsEvent {
@@ -434,6 +435,7 @@ export interface DpsEvent {
 export interface DpsStats {
   dpsPostCount: number;
   accidentCount: number;
+  cameraCount: number;
   totalActive: number;
 }
 

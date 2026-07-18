@@ -1931,7 +1931,7 @@ components:
 
     DpsEventType:
       type: string
-      enum: [dps_post, accident]
+      enum: [dps_post, accident, camera]
 
     DpsEvent:
       type: object
@@ -1960,11 +1960,13 @@ components:
 
     DpsStats:
       type: object
-      required: [dpsPostCount, accidentCount, totalActive]
+      required: [dpsPostCount, accidentCount, cameraCount, totalActive]
       properties:
         dpsPostCount:
           type: integer
         accidentCount:
+          type: integer
+        cameraCount:
           type: integer
         totalActive:
           type: integer

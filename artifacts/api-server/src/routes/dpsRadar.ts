@@ -25,10 +25,15 @@ const ACCIDENT_KEYWORDS = [
   "авария", "дтп", "столкновение", "авар", "разбились", "въехал",
   "улетел", "перевернулся", "сбил",
 ];
+const CAMERA_KEYWORDS = [
+  "камера", "фоторадар", "фото радар", "видеофиксация", "видео фиксация",
+  "треног", "треноги", "автофиксация", "скоростна", "камер",
+];
 
-function detectEventType(text: string): "dps_post" | "accident" | null {
+function detectEventType(text: string): "dps_post" | "accident" | "camera" | null {
   const lower = text.toLowerCase();
   if (ACCIDENT_KEYWORDS.some((kw) => lower.includes(kw))) return "accident";
+  if (CAMERA_KEYWORDS.some((kw) => lower.includes(kw))) return "camera";
   if (DPS_KEYWORDS.some((kw) => lower.includes(kw))) return "dps_post";
   return null;
 }
@@ -158,12 +163,14 @@ router.get("/dps-radar/stats", async (_req, res): Promise<void> => {
 
     let dpsPostCount = 0;
     let accidentCount = 0;
+    let cameraCount = 0;
     for (const r of rows) {
       if (r.type === "dps_post") dpsPostCount = r.cnt;
       if (r.type === "accident") accidentCount = r.cnt;
+      if (r.type === "camera") cameraCount = r.cnt;
     }
 
-    res.json({ dpsPostCount, accidentCount, totalActive: dpsPostCount + accidentCount });
+    res.json({ dpsPostCount, accidentCount, cameraCount, totalActive: dpsPostCount + accidentCount + cameraCount });
   } catch (err) {
     logger.error({ err }, "Failed to get DPS stats");
     res.status(500).json({ error: "Internal error" });
