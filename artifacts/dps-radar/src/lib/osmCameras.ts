@@ -48,7 +48,7 @@ export async function fetchOsmCameras(): Promise<OsmCamera[]> {
 
   try {
     // Запрашиваем через наш прокси, чтобы избежать CORS
-    const res = await fetch(`${import.meta.env.BASE_URL}api/dps-radar/osm-cameras`);
+    const res = await fetch('/api/dps-radar/osm-cameras');
     if (!res.ok) throw new Error(`API ${res.status}`);
 
     const json = await res.json() as {
