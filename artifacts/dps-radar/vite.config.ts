@@ -69,6 +69,14 @@ export default defineConfig({
     strictPort: true,
     host: '0.0.0.0',
     allowedHosts: true,
+    // Proxy API calls to the Express API server so profile/sync and other
+    // DPS Radar endpoints work both in Replit dev and on VDS
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
     fs: {
       strict: true,
     },
