@@ -1,26 +1,33 @@
 #!/bin/bash
+set -e
 
-echo "=== iptables NAT PREROUTING ==="
-iptables -t nat -L PREROUTING -n -v 2>/dev/null || echo "нет прав"
+echo "=== Docker контейнеры на порту 80 ==="
+docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Ports}}" | grep -E "0.0.0.0:80|Header"
 
-echo "=== Все процессы на порту 80 ==="
-ss -tlnp | grep :80
-
-echo "=== Все процессы на портах 3000-9000 ==="
-ss -tlnp | grep -E ":(3000|4000|5000|8080|9000)"
-
-echo "=== Удаляю все REDIRECT/DNAT правила на порту 80 (если есть) ==="
-iptables -t nat -L PREROUTING -n --line-numbers 2>/dev/null | grep "dpt:80" | awk '{print $1}' | sort -rn | xargs -I{} iptables -t nat -D PREROUTING {} 2>/dev/null && echo "удалены" || echo "нечего удалять"
+echo ""
+echo "=== Останавливаю Docker-контейнеры на порту 80 ==="
+CONTAINERS=$(docker ps --format "{{.ID}} {{.Ports}}" | grep "0\.0\.0\.0:80->" | awk '{print $1}')
+if [ -n "$CONTAINERS" ]; then
+    echo "Останавливаю: $CONTAINERS"
+    docker stop $CONTAINERS
+else
+    echo "Нет контейнеров на 80"
+fi
 
 echo ""
 echo "=== Останавливаю nginx, запускаю certbot standalone ==="
-systemctl stop nginx
+systemctl stop nginx 2>/dev/null || true
 sleep 1
 certbot certonly --standalone -d ticketflowru.ru
-systemctl start nginx
 
 echo ""
-echo "=== Добавляю HTTPS в nginx ==="
+echo "=== Запускаю контейнеры обратно ==="
+[ -n "$CONTAINERS" ] && docker start $CONTAINERS || true
+systemctl start nginx 2>/dev/null || true
+
+echo ""
+echo "=== Пишу nginx конфиг с HTTPS ==="
+mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
 cat > /etc/nginx/sites-available/dps-radar << 'NGINXEOF'
 server {
     listen 80;
@@ -48,5 +55,7 @@ server {
 }
 NGINXEOF
 
+ln -sf /etc/nginx/sites-available/dps-radar /etc/nginx/sites-enabled/dps-radar
+rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 echo "=== Готово! https://ticketflowru.ru/dps-radar/ ==="
