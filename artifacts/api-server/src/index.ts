@@ -57,6 +57,14 @@ app.listen(port, async (err) => {
 
   logger.info({ port }, "Server listening");
 
+  // Log Telegram bot configuration status so it's easy to verify in deployment logs
+  const botUsername = process.env.TELEGRAM_BOT_USERNAME;
+  if (botUsername) {
+    logger.info({ botUsername }, "Telegram bot username configured — invite links will use t.me/" + botUsername);
+  } else {
+    logger.warn("TELEGRAM_BOT_USERNAME is not set — invite links will fall back to hardcoded default");
+  }
+
   // Set up Telegram webhook for DPS Radar bot (non-blocking)
   setupTelegramWebhook().catch((e: unknown) =>
     logger.warn({ err: e }, "Telegram webhook setup failed"),
