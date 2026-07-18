@@ -134,6 +134,89 @@ bash deploy/healthcheck.sh
 1. `GET /api/health` — API-сервер отвечает
 2. Telegram `getWebhookInfo` — вебхук зарегистрирован и нет последних ошибок
 
+## Мониторинг и Telegram-алерты
+
+### Статус healthcheck
+
+Docker автоматически проверяет `GET /api/health` каждые 30 секунд.
+Посмотреть текущий статус всех контейнеров:
+
+```bash
+docker compose -f deploy/docker-compose.yml ps
+```
+
+Колонка `STATUS` покажет `healthy`, `unhealthy` или `starting`.
+
+### Вариант 1 — алерты через `docker events` (systemd-сервис)
+
+Создайте скрипт `/opt/dps-radar/deploy/alert.sh`:
+
+```bash
+#!/usr/bin/env bash
+# Отправляет сообщение в Telegram при переходе контейнера в unhealthy
+# Переменные задаются в /opt/dps-radar/deploy/.env
+
+set -euo pipefail
+source /opt/dps-radar/deploy/.env  # читаем TELEGRAM_BOT_TOKEN и ALERT_CHAT_ID
+
+docker events \
+  --filter "event=health_status" \
+  --filter "event=die" \
+  --format "{{.Time}} {{.Actor.Attributes.name}} {{.Action}}" |
+while read -r line; do
+  if echo "$line" | grep -qE "unhealthy|die"; then
+    HOST=$(hostname)
+    curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+      --data-urlencode "chat_id=${ALERT_CHAT_ID}" \
+      --data-urlencode "text=🚨 [${HOST}] $line" > /dev/null
+  fi
+done
+```
+
+Добавьте в `.env`:
+
+```dotenv
+ALERT_CHAT_ID=123456789   # ID чата или пользователя, куда слать алерты
+```
+
+Зарегистрируйте как systemd-сервис `/etc/systemd/system/dps-alert.service`:
+
+```ini
+[Unit]
+Description=DPS Radar Docker health alert
+After=docker.service
+Requires=docker.service
+
+[Service]
+ExecStart=/bin/bash /opt/dps-radar/deploy/alert.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now dps-alert
+```
+
+### Вариант 2 — простой cron каждую минуту
+
+Добавьте строку в `crontab -e` от пользователя, под которым запущен Docker:
+
+```cron
+* * * * * /bin/bash /opt/dps-radar/deploy/healthcheck.sh \
+  || curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+       --data-urlencode "chat_id=${ALERT_CHAT_ID}" \
+       --data-urlencode "text=🚨 $(hostname): /api/health check FAILED" > /dev/null 2>&1
+```
+
+> **Совет:** `healthcheck.sh` завершается с кодом 1 при любой ошибке,
+> поэтому `||` сработает только при реальном сбое.
+
+---
+
 ## Остановка
 
 ```bash
