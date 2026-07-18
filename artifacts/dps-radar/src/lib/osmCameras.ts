@@ -10,6 +10,21 @@ export interface OsmCamera {
   direction?: number;
   maxspeed?: string;
   _source?: string;
+  violations?: string[]; // "speed" | "seatbelt" | "stop_line" | "red_light" | "pedestrian" | "parking"
+}
+
+/** Человекочитаемые названия нарушений */
+export const VIOLATION_LABELS: Record<string, string> = {
+  speed:      "Скорость",
+  seatbelt:   "Ремень безопасности",
+  stop_line:  "Стоп-линия",
+  red_light:  "Проезд на красный",
+  pedestrian: "Пешеходный переход",
+  parking:    "Остановка/стоянка",
+};
+
+export function hasSpeed(cam: OsmCamera): boolean {
+  return !cam.violations || cam.violations.length === 0 || cam.violations.includes("speed");
 }
 
 export interface MapBounds {
@@ -53,12 +68,13 @@ export async function fetchCamerasInBounds(bounds: MapBounds): Promise<OsmCamera
     };
 
     const cameras: OsmCamera[] = (json.elements ?? []).map(el => ({
-      id:       el.id,
-      lat:      el.lat,
-      lon:      el.lon,
-      name:     el.tags?.['name'],
-      maxspeed: el.tags?.['maxspeed'],
-      _source:  el._source,
+      id:         el.id,
+      lat:        el.lat,
+      lon:        el.lon,
+      name:       el.tags?.['name'],
+      maxspeed:   el.tags?.['maxspeed'],
+      _source:    el._source,
+      violations: (el as any).violations as string[] | undefined,
     }));
 
     boundsCache = { bounds, cameras, ts: Date.now() };

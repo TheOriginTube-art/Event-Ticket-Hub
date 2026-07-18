@@ -598,6 +598,20 @@ router.get("/dps-radar/osm-cameras", async (req, res) => {
   return res.json({ elements: [...dbElements, ...osmElements, ...wazeElements] });
 });
 
+// ── Парсим нарушения из description ──────────────────────────────────────────
+function parseViolations(desc: string): string[] {
+  const d = desc.toLowerCase();
+  const v: string[] = [];
+  if (/скорост|превышен/.test(d))                         v.push("speed");
+  if (/ремн|безопасност/.test(d))                         v.push("seatbelt");
+  if (/стоп-лини|знак 6\.16/.test(d))                     v.push("stop_line");
+  if (/запрещающий сигнал светофора|проезд на запрещ/.test(d)) v.push("red_light");
+  if (/пешеход/.test(d))                                  v.push("pedestrian");
+  if (/остановки|стоянки/.test(d))                        v.push("parking");
+  // если ничего не распознали — считаем камерой скорости
+  return v.length ? v : ["speed"];
+}
+
 // ── Камеры по видимой области карты (без привязки к городу) ──────────────────
 router.get("/dps-radar/cameras-in-bounds", async (req, res) => {
   const minLat = parseFloat(req.query.minLat as string);
@@ -622,11 +636,12 @@ router.get("/dps-radar/cameras-in-bounds", async (req, res) => {
 
   return res.json({
     elements: cams.map(c => ({
-      id:      c.id,
-      lat:     c.lat,
-      lon:     c.lng,
-      _source: "db",
-      tags:    { name: c.description ?? "Камера фиксации скорости", maxspeed: "60" },
+      id:         c.id,
+      lat:        c.lat,
+      lon:        c.lng,
+      _source:    "db",
+      violations: parseViolations(c.description ?? ""),
+      tags:       { name: c.description ?? "Камера фиксации скорости", maxspeed: "60" },
     })),
   });
 });

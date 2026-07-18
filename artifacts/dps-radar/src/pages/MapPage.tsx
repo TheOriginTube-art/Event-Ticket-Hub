@@ -6,7 +6,7 @@ import { Navigation, Settings, MapPin, X, Check, Trash2, Camera, Play, Square } 
 import { useListDpsEvents, useGetDpsStats } from '@workspace/api-client-react';
 import { GeocodeResult, useGeocodeSearch } from '@/lib/nominatim';
 import { fetchOsrmRoute, calculateAvoidanceWaypoints, RouteResult } from '@/lib/osrm';
-import { fetchCamerasInBounds, OsmCamera } from '@/lib/osmCameras';
+import { fetchCamerasInBounds, OsmCamera, VIOLATION_LABELS, hasSpeed } from '@/lib/osmCameras';
 
 function escHtml(str: string): string {
   return str
@@ -155,7 +155,7 @@ export default function MapPage() {
   const speed = gps?.speed ?? null;
 
   // Ближайшая камера (OSM + репортованные) и предупреждение
-  interface NearestCam { distM: number; limitKmh: number; label: string }
+  interface NearestCam { distM: number; limitKmh: number; label: string; violations: string[] }
   const [nearestCam, setNearestCam] = React.useState<NearestCam | null>(null);
 
   const WARN_DIST  = 500; // оранжевое предупреждение, м
@@ -300,46 +300,52 @@ export default function MapPage() {
     };
   }, [loadCamerasForCurrentBounds]);
 
-  // ── Отрисовка OSM камер на карте ──────────────────────────────────────────
+  // ── Отрисовка OSM камер на карте (только камеры скорости) ────────────────
   React.useEffect(() => {
     const layer = osmCameraLayerRef.current;
     layer.clearLayers();
     if (!settings.showCameras) return;
-    osmCameras.forEach(cam => {
+    osmCameras.filter(hasSpeed).forEach(cam => {
       const marker = L.marker([cam.lat, cam.lon], { icon: cameraIcon });
-      const limit  = cam.maxspeed ? `${cam.maxspeed} км/ч` : 'не указан';
+      const limit  = cam.maxspeed ? `${cam.maxspeed} км/ч` : '60 км/ч';
       const name   = cam.name ?? 'Камера фиксации скорости';
+      const vLabels = (cam.violations ?? ['speed'])
+        .map(v => VIOLATION_LABELS[v] ?? v).join(', ');
       marker.bindPopup(`
         <div style="min-width:160px">
           <div style="font-weight:700;margin-bottom:4px">📷 ${escHtml(name)}</div>
           <div style="font-size:.8em;color:#94a3b8">Лимит: ${escHtml(limit)}</div>
-          ${cam.direction != null ? `<div style="font-size:.75em;color:#94a3b8">Направление: ${cam.direction}°</div>` : ''}
-          <div style="font-size:.7em;color:#475569;margin-top:4px">Источник: OpenStreetMap</div>
+          <div style="font-size:.8em;color:#94a3b8;margin-top:2px">Фиксирует: ${escHtml(vLabels)}</div>
         </div>
       `);
       marker.addTo(layer);
     });
   }, [osmCameras, settings.showCameras]);
 
-  // ── Proximity: ближайшая камера ───────────────────────────────────────────
+  // ── Proximity: ближайшая камера (все типы, включая ремень/стоп-линию) ─────
   React.useEffect(() => {
     if (!gps) { setNearestCam(null); return; }
 
     let best: NearestCam | null = null;
 
-    // OSM камеры
+    // Все камеры из БД — включая те что не показываем на карте
     osmCameras.forEach(cam => {
       const d = haversineMeters(gps.lat, gps.lng, cam.lat, cam.lon);
       const limit = cam.maxspeed ? parseInt(cam.maxspeed) : 60;
       if (!best || d < best.distM)
-        best = { distM: d, limitKmh: isNaN(limit) ? 60 : limit, label: cam.name ?? 'Камера' };
+        best = {
+          distM:      d,
+          limitKmh:   isNaN(limit) ? 60 : limit,
+          label:      cam.name ?? 'Камера',
+          violations: cam.violations ?? ['speed'],
+        };
     });
 
     // Репортованные камеры из базы
     events?.filter(e => e.type === 'camera').forEach(ev => {
       const d = haversineMeters(gps.lat, gps.lng, ev.lat, ev.lng);
       if (!best || d < best.distM)
-        best = { distM: d, limitKmh: 60, label: 'Камера (сообщение)' };
+        best = { distM: d, limitKmh: 60, label: 'Камера (сообщение)', violations: ['speed'] };
     });
 
     setNearestCam(best && (best as NearestCam).distM <= WARN_DIST ? best : null);
@@ -523,22 +529,36 @@ export default function MapPage() {
       )}
 
       {/* ── Баннер камеры — появляется при приближении ───────────────────── */}
-      {isApproaching && nearestCam && (
-        <div className="absolute z-40 pointer-events-none left-1/2 -translate-x-1/2"
-          style={{ top: 88 }}>
-          <div className={`flex items-center gap-2 px-4 py-2 rounded-2xl shadow-2xl font-bold text-sm border ${
-            isSpeeding
-              ? 'bg-red-600/95 border-red-400 text-white'
-              : 'bg-orange-500/95 border-orange-300 text-white'
-          }`}>
-            <Camera className="w-4 h-4 shrink-0" />
-            <span>
-              {isSpeeding ? '⚠️ ПРЕВЫШЕНИЕ ' : ''}
-              📷 {Math.round(nearestCam.distM)} м · лимит {nearestCam.limitKmh} км/ч
-            </span>
+      {isApproaching && nearestCam && (() => {
+        const v = nearestCam.violations ?? ['speed'];
+        const isSpeedCam = v.includes('speed');
+        const extras = v.filter(x => x !== 'speed')
+          .map(x => VIOLATION_LABELS[x] ?? x);
+        return (
+          <div className="absolute z-40 pointer-events-none left-1/2 -translate-x-1/2"
+            style={{ top: 88 }}>
+            <div className={`flex flex-col items-center gap-0.5 px-4 py-2 rounded-2xl shadow-2xl font-bold text-sm border ${
+              isSpeeding
+                ? 'bg-red-600/95 border-red-400 text-white'
+                : 'bg-orange-500/95 border-orange-300 text-white'
+            }`}>
+              <div className="flex items-center gap-2">
+                <Camera className="w-4 h-4 shrink-0" />
+                <span>
+                  {isSpeeding ? '⚠️ ПРЕВЫШЕНИЕ · ' : ''}
+                  📷 {Math.round(nearestCam.distM)} м
+                  {isSpeedCam ? ` · лимит ${nearestCam.limitKmh} км/ч` : ''}
+                </span>
+              </div>
+              {extras.length > 0 && (
+                <div className="text-xs font-semibold opacity-90 tracking-wide">
+                  ⚠️ {extras.join(' · ')}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Спидометр — правый нижний угол ──────────────────────────────── */}
       {speed != null && (
