@@ -1,0 +1,3870 @@
+From 0e3ef4a0ccba89534e7f002a2e805d200560c6a9 Mon Sep 17 00:00:00 2001
+From: arthurnametov <61102269-arthurnametov@users.noreply.replit.com>
+Date: Sat, 18 Jul 2026 01:25:42 +0000
+Subject: [PATCH 1/5] Switch DB schema management from drizzle push to
+ versioned migrations
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Add `out: ./migrations` to drizzle.config.ts
+- Add `generate` and `migrate` scripts to lib/db/package.json
+- Generate initial migration 0000_useful_tarot.sql (all 15 tables)
+- docker-compose migrate service runs `drizzle-kit migrate` instead of `push --accept-data-loss`
+- Add deploy/baseline.sh: idempotent one-time script for existing push-based databases — creates drizzle.__drizzle_migrations and marks migration 0000 as applied with correct SHA-256 hash + folderMillis from journal
+- update.sh: starts postgres, detects push-based DBs (tables exist but no tracking table), fails fast with clear instructions before running migrations, then applies pending migrations before container rebuild
+- README: documents migration workflow, schema change process, and upgrade path from push to migrate
+
+Replit-Task-Id: 8c242071-fc4d-4b91-a874-3b7707a342ec
+---
+ deploy/README.md                          |   92 +-
+ deploy/baseline.sh                        |  116 +++
+ deploy/docker-compose.yml                 |    2 +-
+ deploy/update.sh                          |   59 +-
+ lib/db/drizzle.config.ts                  |    1 +
+ lib/db/migrations/0000_useful_tarot.sql   |  159 ++++
+ lib/db/migrations/meta/0000_snapshot.json | 1041 +++++++++++++++++++++
+ lib/db/migrations/meta/_journal.json      |   13 +
+ lib/db/package.json                       |    2 +
+ 9 files changed, 1474 insertions(+), 11 deletions(-)
+ create mode 100644 deploy/baseline.sh
+ create mode 100644 lib/db/migrations/0000_useful_tarot.sql
+ create mode 100644 lib/db/migrations/meta/0000_snapshot.json
+ create mode 100644 lib/db/migrations/meta/_journal.json
+
+diff --git a/deploy/README.md b/deploy/README.md
+index 3d40509..35c9319 100644
+--- a/deploy/README.md
++++ b/deploy/README.md
+@@ -62,7 +62,7 @@ sudo ln -s /etc/nginx/sites-available/dps-radar /etc/nginx/sites-enabled/
+ sudo nginx -t && sudo systemctl reload nginx
+ ```
+ 
+-### 4. Создайте таблицы в БД (один раз при первом запуске)
++### 4. Примените миграции БД
+ 
+ ```bash
+ cd /opt/dps-radar
+@@ -70,14 +70,19 @@ cd /opt/dps-radar
+ # Сначала поднимаем только postgres и ждём, пока он станет healthy
+ docker compose -f deploy/docker-compose.yml up -d postgres
+ 
+-# Применяем схему через drizzle-kit push
+-# (сервис migrate использует builder-образ с pnpm и исходниками)
++# Применяем все миграции из lib/db/migrations/ через drizzle-kit migrate
++# (сервис migrate использует builder-образ с pnpm и исходниками drizzle-kit)
+ docker compose -f deploy/docker-compose.yml \
+   --profile migrate run --rm migrate
+ ```
+ 
+-Команда завершится без ошибок и выведет список применённых таблиц.
+-После этого сервис автоматически остановится.
++Drizzle записывает в таблицу `__drizzle_migrations` какие файлы уже применены,
++поэтому повторный запуск безопасен — уже применённые миграции пропускаются.
++После завершения сервис автоматически остановится.
++
++> **При каждом обновлении** (если схема изменилась) запускайте тот же
++> `docker compose … run --rm migrate` — скрипт `deploy/update.sh` делает
++> это автоматически.
+ 
+ ### 5. Запустите всё
+ 
+@@ -109,10 +114,85 @@ docker compose -f deploy/docker-compose.yml logs -f api
+ 
+ ---
+ 
++## Миграции схемы БД
++
++Схема хранится в `lib/db/src/schema/`. Миграционные файлы живут в
++`lib/db/migrations/` и коммитятся в репозиторий.
++
++### Как изменить схему
++
++1. Внесите изменения в файлы `lib/db/src/schema/*.ts`.
++2. Сгенерируйте новый SQL-файл миграции:
++
++   ```bash
++   # Запускается локально (DATABASE_URL нужен только как заглушка — к БД не подключается)
++   DATABASE_URL=postgresql://x:x@localhost/x \
++     pnpm --filter @workspace/db run generate
++   ```
++
++   В `lib/db/migrations/` появится новый файл вида `0001_*.sql`.
++
++3. Закоммитьте сгенерированный файл вместе с изменениями схемы.
++4. При следующем деплое `update.sh` автоматически применит новую миграцию.
++
++> **Важно:** никогда не редактируйте существующие файлы миграций вручную —
++> Drizzle сверяет хеши. Для исправления ошибки создайте новую миграцию.
++
++### Применить миграции вручную (без полного деплоя)
++
++```bash
++cd /opt/dps-radar
++docker compose -f deploy/docker-compose.yml --profile migrate run --rm migrate
++```
++
++### Переход с drizzle-kit push на миграции (один раз на каждый стенд)
++
++Если база данных уже была инициализирована командой `drizzle-kit push`
++(без истории миграций), перед первым запуском `update.sh` необходимо
++выполнить разовую процедуру *baseline*.
++
++> **Почему это нужно?**
++> Файл миграции `0000_useful_tarot.sql` содержит `CREATE TABLE` / `CREATE TYPE`
++> для всех таблиц. На пустой базе это нормально. На уже существующей базе
++> PostgreSQL выдаст ошибку «already exists». Скрипт `baseline.sh` регистрирует
++> миграцию `0000` как «уже применённую» в таблице отслеживания Drizzle
++> (`drizzle.__drizzle_migrations`), не затрагивая сами данные.
++
++**Шаги (выполнить один раз):**
++
++1. Убедитесь, что контейнер `postgres` запущен:
++
++   ```bash
++   docker compose -f deploy/docker-compose.yml up -d postgres
++   ```
++
++2. Запустите baseline-скрипт, передав `DATABASE_URL`:
++
++   ```bash
++   DATABASE_URL=postgresql://dpsradar:<password>@localhost:5432/dpsradar \
++     bash deploy/baseline.sh
++   ```
++
++   Скрипт идемпотентен — повторный запуск безопасен.
++
++3. Убедитесь, что скрипт завершился с сообщением `Baseline complete`, затем
++   продолжайте деплой как обычно:
++
++   ```bash
++   bash deploy/update.sh
++   ```
++
++`update.sh` сам проверяет наличие таблицы отслеживания и завершится с
++понятной ошибкой, если baseline не был выполнен, — это защита от случайного
++запуска migrate на push-based базе.
++
++---
++
+ ## Обновление
+ 
+ Используйте скрипт `deploy/update.sh` — он сам выполняет `git pull`,
+-пересобирает контейнеры и автоматически запускает проверку здоровья бота:
++применяет миграции БД, пересобирает контейнеры и запускает проверку
++здоровья бота:
+ 
+ ```bash
+ cd /opt/dps-radar
+diff --git a/deploy/baseline.sh b/deploy/baseline.sh
+new file mode 100644
+index 0000000..7de52bb
+--- /dev/null
++++ b/deploy/baseline.sh
+@@ -0,0 +1,116 @@
++#!/usr/bin/env bash
++# deploy/baseline.sh — One-time baseline for databases initialised with drizzle-kit push.
++#
++# WHEN TO RUN
++#   Run this script ONCE on any production database that was previously set up
++#   with `drizzle-kit push` before switching to the versioned-migration workflow.
++#   After running it, `drizzle-kit migrate` (and deploy/update.sh) will work
++#   correctly — migration 0000 will be treated as already applied.
++#
++#   For brand-new (empty) databases you do NOT need to run this script;
++#   `drizzle-kit migrate` will create all tables from scratch.
++#
++# USAGE
++#   # Option A — connect directly with DATABASE_URL
++#   DATABASE_URL=postgresql://dpsradar:<password>@<host>:5432/dpsradar \
++#     bash deploy/baseline.sh
++#
++#   # Option B — run psql inside the running postgres container
++#   docker compose -f deploy/docker-compose.yml exec postgres bash
++#   # then inside the container:
++#   DATABASE_URL=postgresql://dpsradar:<password>@localhost:5432/dpsradar \
++#     bash deploy/baseline.sh
++#
++# SAFETY
++#   The script is fully idempotent: running it multiple times is safe.
++
++set -euo pipefail
++
++BOLD='\033[1m'
++GREEN='\033[0;32m'
++YELLOW='\033[0;33m'
++RED='\033[0;31m'
++CYAN='\033[0;36m'
++RESET='\033[0m'
++
++step()  { echo -e "\n${CYAN}${BOLD}▶ $*${RESET}"; }
++ok()    { echo -e "${GREEN}✓ $*${RESET}"; }
++warn()  { echo -e "${YELLOW}⚠  $*${RESET}"; }
++fail()  { echo -e "${RED}✗ $*${RESET}"; }
++
++echo ""
++echo -e "${BOLD}═══════════════════════════════════════════${RESET}"
++echo -e "${BOLD}  ДПС Радар — migration baseline${RESET}"
++echo -e "${BOLD}═══════════════════════════════════════════${RESET}"
++
++# ── Require DATABASE_URL ──────────────────────────────────────────────────────
++if [[ -z "${DATABASE_URL:-}" ]]; then
++  fail "DATABASE_URL is not set."
++  echo "  Export it before running this script:"
++  echo "    DATABASE_URL=postgresql://dpsradar:<password>@localhost:5432/dpsradar \\"
++  echo "      bash deploy/baseline.sh"
++  exit 1
++fi
++
++# ── These values must match lib/db/migrations/meta/_journal.json exactly ──────
++# Migration tag : 0000_useful_tarot
++# SHA-256 of the SQL file content (lib/db/migrations/0000_useful_tarot.sql):
++MIGRATION_HASH="c2f78215a7db6c2c7448ee90952917e0d5838eb42542ccce69f457258203412c"
++# journal entry "when" timestamp (milliseconds since epoch):
++MIGRATION_MILLIS="1784337046392"
++
++# ── Locate psql ───────────────────────────────────────────────────────────────
++if ! command -v psql &>/dev/null; then
++  fail "psql is not installed or not in PATH."
++  echo "  Install it (e.g. apt install postgresql-client) and re-run."
++  exit 1
++fi
++
++# ── Check whether application tables already exist (push-based DB) ────────────
++step "Detecting database state…"
++HAS_TABLES=$(psql -tAX "$DATABASE_URL" \
++  -c "SELECT count(*) FROM information_schema.tables \
++      WHERE table_schema = 'public' AND table_name = 'dps_events';" 2>/dev/null || echo "0")
++
++if [[ "$HAS_TABLES" == "0" ]]; then
++  warn "No application tables found — this looks like a fresh database."
++  warn "You do NOT need to run baseline.sh on a fresh database."
++  warn "Simply run:  docker compose -f deploy/docker-compose.yml --profile migrate run --rm migrate"
++  exit 0
++fi
++
++ok "Application tables detected (push-based database confirmed)."
++
++# ── Create drizzle tracking schema and table (idempotent) ────────────────────
++step "Creating drizzle migration-tracking schema and table…"
++psql "$DATABASE_URL" <<SQL
++CREATE SCHEMA IF NOT EXISTS drizzle;
++CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (
++  id         SERIAL PRIMARY KEY,
++  hash       text   NOT NULL,
++  created_at bigint
++);
++SQL
++ok "Schema and table ready."
++
++# ── Check whether migration 0000 is already recorded ─────────────────────────
++step "Checking whether migration 0000 is already recorded…"
++EXISTS=$(psql -tAX "$DATABASE_URL" \
++  -c "SELECT count(*) FROM drizzle.__drizzle_migrations WHERE hash = '$MIGRATION_HASH';")
++
++if [[ "$EXISTS" -gt "0" ]]; then
++  ok "Migration 0000 is already marked as applied — nothing to do."
++else
++  psql "$DATABASE_URL" <<SQL
++INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
++VALUES ('$MIGRATION_HASH', $MIGRATION_MILLIS);
++SQL
++  ok "Migration 0000 recorded in drizzle.__drizzle_migrations."
++fi
++
++echo ""
++echo -e "${GREEN}${BOLD}Baseline complete.${RESET}"
++echo "The database is now ready for versioned migrations."
++echo ""
++echo "Next step — deploy as usual:"
++echo "  bash deploy/update.sh"
+diff --git a/deploy/docker-compose.yml b/deploy/docker-compose.yml
+index d99ea10..76d213a 100644
+--- a/deploy/docker-compose.yml
++++ b/deploy/docker-compose.yml
+@@ -54,7 +54,7 @@ services:
+       PORT:         9999
+       DATABASE_URL: postgresql://dpsradar:${POSTGRES_PASSWORD}@postgres:5432/dpsradar
+     entrypoint: >
+-      sh -c "pnpm --filter @workspace/db run push --accept-data-loss"
++      sh -c "pnpm --filter @workspace/db run migrate"
+     depends_on:
+       postgres:
+         condition: service_healthy
+diff --git a/deploy/update.sh b/deploy/update.sh
+index a457c42..0610059 100755
+--- a/deploy/update.sh
++++ b/deploy/update.sh
+@@ -7,7 +7,7 @@
+ # Exit code:
+ #   0 — deploy succeeded and all health checks passed
+ #   1 — health check failed (containers are up but something is wrong)
+-#   2 — docker compose itself failed
++#   2 — docker compose or migration failed
+ 
+ set -euo pipefail
+ 
+@@ -37,7 +37,58 @@ cd "$REPO_ROOT"
+ git pull
+ ok "Code up to date"
+ 
+-# ── 2. Build & restart containers ────────────────────────────────────────────
++# ── 2. Ensure postgres is running ─────────────────────────────────────────────
++step "Ensuring postgres is up"
++docker compose -f "$COMPOSE_FILE" up -d postgres
++
++# Wait up to 40 s for postgres to become healthy
++for i in $(seq 1 20); do
++  STATUS=$(docker compose -f "$COMPOSE_FILE" ps --format json postgres 2>/dev/null \
++    | grep -o '"Health":"[^"]*"' | grep -o '[^"]*$' || echo "unknown")
++  [[ "$STATUS" == "healthy" ]] && break
++  sleep 2
++done
++ok "Postgres is up"
++
++# ── 3. Guard against push-based databases ─────────────────────────────────────
++# Detect databases that were initialised with `drizzle-kit push` and have never
++# been tracked by `drizzle-kit migrate`.  Trying to run migrate on such a DB
++# would fail with "relation already exists" errors.
++step "Checking database migration state"
++HAS_TRACKING=$(docker compose -f "$COMPOSE_FILE" exec -T postgres \
++  psql -U dpsradar -tAX -c \
++  "SELECT count(*) FROM information_schema.tables \
++   WHERE table_schema = 'drizzle' AND table_name = '__drizzle_migrations';" \
++  2>/dev/null || echo "0")
++HAS_TABLES=$(docker compose -f "$COMPOSE_FILE" exec -T postgres \
++  psql -U dpsradar -tAX -c \
++  "SELECT count(*) FROM information_schema.tables \
++   WHERE table_schema = 'public' AND table_name = 'dps_events';" \
++  2>/dev/null || echo "0")
++
++if [[ "${HAS_TRACKING:-0}" == "0" && "${HAS_TABLES:-0}" -gt "0" ]]; then
++  fail "Push-based database detected — drizzle migration tracking is missing."
++  echo ""
++  echo "  This database was previously set up with  drizzle-kit push."
++  echo "  Run the one-time baseline script before deploying:"
++  echo ""
++  echo "    DATABASE_URL=postgresql://dpsradar:<password>@localhost:5432/dpsradar \\"
++  echo "      bash $SCRIPT_DIR/baseline.sh"
++  echo ""
++  echo "  Then re-run:  bash $SCRIPT_DIR/update.sh"
++  exit 2
++fi
++ok "Database state OK"
++
++# ── 4. Apply pending migrations ───────────────────────────────────────────────
++step "Applying database migrations"
++docker compose -f "$COMPOSE_FILE" --profile migrate run --rm migrate || {
++  fail "Database migration failed (exit $?)"
++  exit 2
++}
++ok "Migrations applied"
++
++# ── 5. Build & restart containers ────────────────────────────────────────────
+ step "Building and restarting containers"
+ docker compose -f "$COMPOSE_FILE" up -d --build || {
+   fail "docker compose up failed (exit $?)"
+@@ -45,7 +96,7 @@ docker compose -f "$COMPOSE_FILE" up -d --build || {
+ }
+ ok "Containers started"
+ 
+-# ── 3. Wait for the API server to become ready ───────────────────────────────
++# ── 6. Wait for the API server to become ready ───────────────────────────────
+ # Give containers time to boot before running health checks.
+ # The health check script already has per-check retries, but we add a small
+ # initial grace period here so the first attempt isn't against a still-starting
+@@ -55,7 +106,7 @@ step "Waiting ${WARMUP_SECONDS}s for services to warm up…"
+ sleep "$WARMUP_SECONDS"
+ ok "Grace period done"
+ 
+-# ── 4. Run post-deploy health checks ─────────────────────────────────────────
++# ── 7. Run post-deploy health checks ─────────────────────────────────────────
+ step "Running health checks"
+ bash "$SCRIPT_DIR/healthcheck.sh" && HC_EXIT=0 || HC_EXIT=$?
+ 
+diff --git a/lib/db/drizzle.config.ts b/lib/db/drizzle.config.ts
+index dcf8b84..aceed9f 100644
+--- a/lib/db/drizzle.config.ts
++++ b/lib/db/drizzle.config.ts
+@@ -7,6 +7,7 @@ if (!process.env.DATABASE_URL) {
+ 
+ export default defineConfig({
+   schema: path.join(__dirname, "./src/schema/index.ts"),
++  out: path.join(__dirname, "./migrations"),
+   dialect: "postgresql",
+   dbCredentials: {
+     url: process.env.DATABASE_URL,
+diff --git a/lib/db/migrations/0000_useful_tarot.sql b/lib/db/migrations/0000_useful_tarot.sql
+new file mode 100644
+index 0000000..6d564ed
+--- /dev/null
++++ b/lib/db/migrations/0000_useful_tarot.sql
+@@ -0,0 +1,159 @@
++CREATE TYPE "public"."event_type" AS ENUM('movie', 'theater', 'concert');--> statement-breakpoint
++CREATE TYPE "public"."seat_status" AS ENUM('available', 'reserved', 'sold', 'blocked');--> statement-breakpoint
++CREATE TYPE "public"."order_payment_method" AS ENUM('ozon_qr', 'stripe');--> statement-breakpoint
++CREATE TYPE "public"."order_status" AS ENUM('pending', 'awaiting_confirmation', 'paid', 'cancelled');--> statement-breakpoint
++CREATE TABLE "venues" (
++	"id" serial PRIMARY KEY NOT NULL,
++	"name" text NOT NULL,
++	"city" text NOT NULL,
++	"address" text NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "events" (
++	"id" serial PRIMARY KEY NOT NULL,
++	"title" text NOT NULL,
++	"type" "event_type" NOT NULL,
++	"description" text NOT NULL,
++	"poster_url" text NOT NULL,
++	"genre" text NOT NULL,
++	"duration_minutes" integer NOT NULL,
++	"age_rating" text NOT NULL,
++	"rating" double precision NOT NULL,
++	"source_name" text NOT NULL,
++	"stripe_product_id" text,
++	"created_at" timestamp with time zone DEFAULT now() NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "sessions" (
++	"id" serial PRIMARY KEY NOT NULL,
++	"event_id" integer NOT NULL,
++	"venue_id" integer NOT NULL,
++	"starts_at" timestamp with time zone NOT NULL,
++	"hall" text NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "ticket_categories" (
++	"id" serial PRIMARY KEY NOT NULL,
++	"session_id" integer NOT NULL,
++	"name" text NOT NULL,
++	"price_cents" integer NOT NULL,
++	"seats_total" integer NOT NULL,
++	"stripe_price_id" text
++);
++--> statement-breakpoint
++CREATE TABLE "seats" (
++	"id" serial PRIMARY KEY NOT NULL,
++	"session_id" integer NOT NULL,
++	"ticket_category_id" integer NOT NULL,
++	"row_label" text NOT NULL,
++	"seat_number" integer NOT NULL,
++	"status" "seat_status" DEFAULT 'available' NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "users" (
++	"id" serial PRIMARY KEY NOT NULL,
++	"email" text NOT NULL,
++	"password_hash" text NOT NULL,
++	"name" text NOT NULL,
++	"is_admin" boolean DEFAULT false NOT NULL,
++	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
++	CONSTRAINT "users_email_unique" UNIQUE("email")
++);
++--> statement-breakpoint
++CREATE TABLE "auth_sessions" (
++	"id" serial PRIMARY KEY NOT NULL,
++	"user_id" integer NOT NULL,
++	"token" text NOT NULL,
++	"expires_at" timestamp with time zone NOT NULL,
++	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
++	CONSTRAINT "auth_sessions_token_unique" UNIQUE("token")
++);
++--> statement-breakpoint
++CREATE TABLE "orders" (
++	"id" serial PRIMARY KEY NOT NULL,
++	"session_id" integer NOT NULL,
++	"user_id" integer,
++	"total_amount_cents" integer NOT NULL,
++	"customer_name" text NOT NULL,
++	"customer_email" text NOT NULL,
++	"status" "order_status" DEFAULT 'pending' NOT NULL,
++	"payment_method" "order_payment_method" DEFAULT 'ozon_qr' NOT NULL,
++	"stripe_checkout_session_id" text,
++	"expires_at" timestamp with time zone,
++	"confirmed_at" timestamp with time zone,
++	"confirmed_by_user_id" integer,
++	"created_at" timestamp with time zone DEFAULT now() NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "order_seats" (
++	"id" serial PRIMARY KEY NOT NULL,
++	"order_id" integer NOT NULL,
++	"seat_id" integer NOT NULL,
++	"price_cents" integer NOT NULL,
++	CONSTRAINT "order_seats_seat_id_unique" UNIQUE("seat_id")
++);
++--> statement-breakpoint
++CREATE TABLE "payment_settings" (
++	"id" serial PRIMARY KEY NOT NULL,
++	"ozon_qr_image_path" text,
++	"instructions" text,
++	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "conversations" (
++	"id" serial PRIMARY KEY NOT NULL,
++	"user_id" integer NOT NULL,
++	"title" text NOT NULL,
++	"created_at" timestamp with time zone DEFAULT now() NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "messages" (
++	"id" serial PRIMARY KEY NOT NULL,
++	"conversation_id" integer NOT NULL,
++	"role" text NOT NULL,
++	"content" text NOT NULL,
++	"created_at" timestamp with time zone DEFAULT now() NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "dps_events" (
++	"id" serial PRIMARY KEY NOT NULL,
++	"type" text NOT NULL,
++	"lat" real NOT NULL,
++	"lng" real NOT NULL,
++	"address" text NOT NULL,
++	"city" text DEFAULT 'blagoveshchensk' NOT NULL,
++	"chat_id" bigint NOT NULL,
++	"author" text NOT NULL,
++	"last_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
++	"created_at" timestamp with time zone DEFAULT now() NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "chat_settings" (
++	"chat_id" bigint PRIMARY KEY NOT NULL,
++	"city" text DEFAULT 'blagoveshchensk' NOT NULL,
++	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
++);
++--> statement-breakpoint
++CREATE TABLE "permanent_cameras" (
++	"id" serial PRIMARY KEY NOT NULL,
++	"lat" real NOT NULL,
++	"lng" real NOT NULL,
++	"description" text DEFAULT 'Камера фиксации скорости' NOT NULL,
++	"city" text DEFAULT 'blagoveshchensk' NOT NULL,
++	"added_by" text DEFAULT 'unknown' NOT NULL,
++	"created_at" timestamp with time zone DEFAULT now() NOT NULL
++);
++--> statement-breakpoint
++ALTER TABLE "sessions" ADD CONSTRAINT "sessions_event_id_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "sessions" ADD CONSTRAINT "sessions_venue_id_venues_id_fk" FOREIGN KEY ("venue_id") REFERENCES "public"."venues"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "ticket_categories" ADD CONSTRAINT "ticket_categories_session_id_sessions_id_fk" FOREIGN KEY ("session_id") REFERENCES "public"."sessions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "seats" ADD CONSTRAINT "seats_session_id_sessions_id_fk" FOREIGN KEY ("session_id") REFERENCES "public"."sessions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "seats" ADD CONSTRAINT "seats_ticket_category_id_ticket_categories_id_fk" FOREIGN KEY ("ticket_category_id") REFERENCES "public"."ticket_categories"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "auth_sessions" ADD CONSTRAINT "auth_sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "orders" ADD CONSTRAINT "orders_session_id_sessions_id_fk" FOREIGN KEY ("session_id") REFERENCES "public"."sessions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "orders" ADD CONSTRAINT "orders_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "orders" ADD CONSTRAINT "orders_confirmed_by_user_id_users_id_fk" FOREIGN KEY ("confirmed_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "order_seats" ADD CONSTRAINT "order_seats_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "order_seats" ADD CONSTRAINT "order_seats_seat_id_seats_id_fk" FOREIGN KEY ("seat_id") REFERENCES "public"."seats"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "conversations" ADD CONSTRAINT "conversations_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
++ALTER TABLE "messages" ADD CONSTRAINT "messages_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE cascade ON UPDATE no action;
+\ No newline at end of file
+diff --git a/lib/db/migrations/meta/0000_snapshot.json b/lib/db/migrations/meta/0000_snapshot.json
+new file mode 100644
+index 0000000..e0bd4c1
+--- /dev/null
++++ b/lib/db/migrations/meta/0000_snapshot.json
+@@ -0,0 +1,1041 @@
++{
++  "id": "a5e82a83-f52f-46ec-aeb1-709fc6b60563",
++  "prevId": "00000000-0000-0000-0000-000000000000",
++  "version": "7",
++  "dialect": "postgresql",
++  "tables": {
++    "public.venues": {
++      "name": "venues",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "serial",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "name": {
++          "name": "name",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "city": {
++          "name": "city",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "address": {
++          "name": "address",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.events": {
++      "name": "events",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "serial",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "title": {
++          "name": "title",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "type": {
++          "name": "type",
++          "type": "event_type",
++          "typeSchema": "public",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "description": {
++          "name": "description",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "poster_url": {
++          "name": "poster_url",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "genre": {
++          "name": "genre",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "duration_minutes": {
++          "name": "duration_minutes",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "age_rating": {
++          "name": "age_rating",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "rating": {
++          "name": "rating",
++          "type": "double precision",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "source_name": {
++          "name": "source_name",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "stripe_product_id": {
++          "name": "stripe_product_id",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.sessions": {
++      "name": "sessions",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "serial",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "event_id": {
++          "name": "event_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "venue_id": {
++          "name": "venue_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "starts_at": {
++          "name": "starts_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "hall": {
++          "name": "hall",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {
++        "sessions_event_id_events_id_fk": {
++          "name": "sessions_event_id_events_id_fk",
++          "tableFrom": "sessions",
++          "tableTo": "events",
++          "columnsFrom": [
++            "event_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        },
++        "sessions_venue_id_venues_id_fk": {
++          "name": "sessions_venue_id_venues_id_fk",
++          "tableFrom": "sessions",
++          "tableTo": "venues",
++          "columnsFrom": [
++            "venue_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.ticket_categories": {
++      "name": "ticket_categories",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "serial",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "session_id": {
++          "name": "session_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "name": {
++          "name": "name",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "price_cents": {
++          "name": "price_cents",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "seats_total": {
++          "name": "seats_total",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "stripe_price_id": {
++          "name": "stripe_price_id",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {
++        "ticket_categories_session_id_sessions_id_fk": {
++          "name": "ticket_categories_session_id_sessions_id_fk",
++          "tableFrom": "ticket_categories",
++          "tableTo": "sessions",
++          "columnsFrom": [
++            "session_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.seats": {
++      "name": "seats",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "serial",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "session_id": {
++          "name": "session_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "ticket_category_id": {
++          "name": "ticket_category_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "row_label": {
++          "name": "row_label",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "seat_number": {
++          "name": "seat_number",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "status": {
++          "name": "status",
++          "type": "seat_status",
++          "typeSchema": "public",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "'available'"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {
++        "seats_session_id_sessions_id_fk": {
++          "name": "seats_session_id_sessions_id_fk",
++          "tableFrom": "seats",
++          "tableTo": "sessions",
++          "columnsFrom": [
++            "session_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        },
++        "seats_ticket_category_id_ticket_categories_id_fk": {
++          "name": "seats_ticket_category_id_ticket_categories_id_fk",
++          "tableFrom": "seats",
++          "tableTo": "ticket_categories",
++          "columnsFrom": [
++            "ticket_category_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.users": {
++      "name": "users",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "serial",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "email": {
++          "name": "email",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "password_hash": {
++          "name": "password_hash",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "name": {
++          "name": "name",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "is_admin": {
++          "name": "is_admin",
++          "type": "boolean",
++          "primaryKey": false,
++          "notNull": true,
++          "default": false
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {
++        "users_email_unique": {
++          "name": "users_email_unique",
++          "nullsNotDistinct": false,
++          "columns": [
++            "email"
++          ]
++        }
++      },
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.auth_sessions": {
++      "name": "auth_sessions",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "serial",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "user_id": {
++          "name": "user_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "token": {
++          "name": "token",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "expires_at": {
++          "name": "expires_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {
++        "auth_sessions_user_id_users_id_fk": {
++          "name": "auth_sessions_user_id_users_id_fk",
++          "tableFrom": "auth_sessions",
++          "tableTo": "users",
++          "columnsFrom": [
++            "user_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {
++        "auth_sessions_token_unique": {
++          "name": "auth_sessions_token_unique",
++          "nullsNotDistinct": false,
++          "columns": [
++            "token"
++          ]
++        }
++      },
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.orders": {
++      "name": "orders",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "serial",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "session_id": {
++          "name": "session_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "user_id": {
++          "name": "user_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "total_amount_cents": {
++          "name": "total_amount_cents",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "customer_name": {
++          "name": "customer_name",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "customer_email": {
++          "name": "customer_email",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "status": {
++          "name": "status",
++          "type": "order_status",
++          "typeSchema": "public",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "'pending'"
++        },
++        "payment_method": {
++          "name": "payment_method",
++          "type": "order_payment_method",
++          "typeSchema": "public",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "'ozon_qr'"
++        },
++        "stripe_checkout_session_id": {
++          "name": "stripe_checkout_session_id",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "expires_at": {
++          "name": "expires_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "confirmed_at": {
++          "name": "confirmed_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "confirmed_by_user_id": {
++          "name": "confirmed_by_user_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {
++        "orders_session_id_sessions_id_fk": {
++          "name": "orders_session_id_sessions_id_fk",
++          "tableFrom": "orders",
++          "tableTo": "sessions",
++          "columnsFrom": [
++            "session_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        },
++        "orders_user_id_users_id_fk": {
++          "name": "orders_user_id_users_id_fk",
++          "tableFrom": "orders",
++          "tableTo": "users",
++          "columnsFrom": [
++            "user_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "set null",
++          "onUpdate": "no action"
++        },
++        "orders_confirmed_by_user_id_users_id_fk": {
++          "name": "orders_confirmed_by_user_id_users_id_fk",
++          "tableFrom": "orders",
++          "tableTo": "users",
++          "columnsFrom": [
++            "confirmed_by_user_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "set null",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.order_seats": {
++      "name": "order_seats",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "serial",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "order_id": {
++          "name": "order_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "seat_id": {
++          "name": "seat_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "price_cents": {
++          "name": "price_cents",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {
++        "order_seats_order_id_orders_id_fk": {
++          "name": "order_seats_order_id_orders_id_fk",
++          "tableFrom": "order_seats",
++          "tableTo": "orders",
++          "columnsFrom": [
++            "order_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        },
++        "order_seats_seat_id_seats_id_fk": {
++          "name": "order_seats_seat_id_seats_id_fk",
++          "tableFrom": "order_seats",
++          "tableTo": "seats",
++          "columnsFrom": [
++            "seat_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {
++        "order_seats_seat_id_unique": {
++          "name": "order_seats_seat_id_unique",
++          "nullsNotDistinct": false,
++          "columns": [
++            "seat_id"
++          ]
++        }
++      },
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.payment_settings": {
++      "name": "payment_settings",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "serial",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "ozon_qr_image_path": {
++          "name": "ozon_qr_image_path",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "instructions": {
++          "name": "instructions",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false
++        },
++        "updated_at": {
++          "name": "updated_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.conversations": {
++      "name": "conversations",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "serial",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "user_id": {
++          "name": "user_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "title": {
++          "name": "title",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {
++        "conversations_user_id_users_id_fk": {
++          "name": "conversations_user_id_users_id_fk",
++          "tableFrom": "conversations",
++          "tableTo": "users",
++          "columnsFrom": [
++            "user_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.messages": {
++      "name": "messages",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "serial",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "conversation_id": {
++          "name": "conversation_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "role": {
++          "name": "role",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "content": {
++          "name": "content",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {
++        "messages_conversation_id_conversations_id_fk": {
++          "name": "messages_conversation_id_conversations_id_fk",
++          "tableFrom": "messages",
++          "tableTo": "conversations",
++          "columnsFrom": [
++            "conversation_id"
++          ],
++          "columnsTo": [
++            "id"
++          ],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.dps_events": {
++      "name": "dps_events",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "serial",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "type": {
++          "name": "type",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "lat": {
++          "name": "lat",
++          "type": "real",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "lng": {
++          "name": "lng",
++          "type": "real",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "address": {
++          "name": "address",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "city": {
++          "name": "city",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "'blagoveshchensk'"
++        },
++        "chat_id": {
++          "name": "chat_id",
++          "type": "bigint",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "author": {
++          "name": "author",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "last_seen_at": {
++          "name": "last_seen_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.chat_settings": {
++      "name": "chat_settings",
++      "schema": "",
++      "columns": {
++        "chat_id": {
++          "name": "chat_id",
++          "type": "bigint",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "city": {
++          "name": "city",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "'blagoveshchensk'"
++        },
++        "updated_at": {
++          "name": "updated_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    },
++    "public.permanent_cameras": {
++      "name": "permanent_cameras",
++      "schema": "",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "serial",
++          "primaryKey": true,
++          "notNull": true
++        },
++        "lat": {
++          "name": "lat",
++          "type": "real",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "lng": {
++          "name": "lng",
++          "type": "real",
++          "primaryKey": false,
++          "notNull": true
++        },
++        "description": {
++          "name": "description",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "'Камера фиксации скорости'"
++        },
++        "city": {
++          "name": "city",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "'blagoveshchensk'"
++        },
++        "added_by": {
++          "name": "added_by",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "'unknown'"
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "timestamp with time zone",
++          "primaryKey": false,
++          "notNull": true,
++          "default": "now()"
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "policies": {},
++      "checkConstraints": {},
++      "isRLSEnabled": false
++    }
++  },
++  "enums": {
++    "public.event_type": {
++      "name": "event_type",
++      "schema": "public",
++      "values": [
++        "movie",
++        "theater",
++        "concert"
++      ]
++    },
++    "public.seat_status": {
++      "name": "seat_status",
++      "schema": "public",
++      "values": [
++        "available",
++        "reserved",
++        "sold",
++        "blocked"
++      ]
++    },
++    "public.order_payment_method": {
++      "name": "order_payment_method",
++      "schema": "public",
++      "values": [
++        "ozon_qr",
++        "stripe"
++      ]
++    },
++    "public.order_status": {
++      "name": "order_status",
++      "schema": "public",
++      "values": [
++        "pending",
++        "awaiting_confirmation",
++        "paid",
++        "cancelled"
++      ]
++    }
++  },
++  "schemas": {},
++  "sequences": {},
++  "roles": {},
++  "policies": {},
++  "views": {},
++  "_meta": {
++    "columns": {},
++    "schemas": {},
++    "tables": {}
++  }
++}
+\ No newline at end of file
+diff --git a/lib/db/migrations/meta/_journal.json b/lib/db/migrations/meta/_journal.json
+new file mode 100644
+index 0000000..9da096f
+--- /dev/null
++++ b/lib/db/migrations/meta/_journal.json
+@@ -0,0 +1,13 @@
++{
++  "version": "7",
++  "dialect": "postgresql",
++  "entries": [
++    {
++      "idx": 0,
++      "version": "7",
++      "when": 1784337046392,
++      "tag": "0000_useful_tarot",
++      "breakpoints": true
++    }
++  ]
++}
+\ No newline at end of file
+diff --git a/lib/db/package.json b/lib/db/package.json
+index 81f34ff..177b2ff 100644
+--- a/lib/db/package.json
++++ b/lib/db/package.json
+@@ -8,6 +8,8 @@
+     "./schema": "./src/schema/index.ts"
+   },
+   "scripts": {
++    "generate": "drizzle-kit generate --config ./drizzle.config.ts",
++    "migrate": "drizzle-kit migrate --config ./drizzle.config.ts",
+     "push": "drizzle-kit push --config ./drizzle.config.ts",
+     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts"
+   },
+-- 
+2.50.1
+
+
+From 8838698fbc0fb8e499ee3ddaa9ee5e61b62b5a6c Mon Sep 17 00:00:00 2001
+From: arthurnametov <61102269-arthurnametov@users.noreply.replit.com>
+Date: Sat, 18 Jul 2026 01:50:04 +0000
+Subject: [PATCH 2/5] Add Makefile and GitHub Actions workflow to run health
+ check automatically on every deploy
+
+Replit-Task-Id: 20c3dd04-0e0e-4af5-a673-293aa47d4688
+---
+ .github/workflows/healthcheck.yml | 44 +++++++++++++++++++++++
+ Makefile                          | 58 +++++++++++++++++++++++++++++++
+ deploy/README.md                  | 23 +++++++++---
+ 3 files changed, 121 insertions(+), 4 deletions(-)
+ create mode 100644 .github/workflows/healthcheck.yml
+ create mode 100644 Makefile
+
+diff --git a/.github/workflows/healthcheck.yml b/.github/workflows/healthcheck.yml
+new file mode 100644
+index 0000000..46bf5c1
+--- /dev/null
++++ b/.github/workflows/healthcheck.yml
+@@ -0,0 +1,44 @@
++name: Post-deploy health check
++
++on:
++  push:
++    branches: [main]
++  workflow_dispatch:
++
++jobs:
++  healthcheck:
++    name: Health check
++    runs-on: ubuntu-latest
++
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v4
++
++      - name: Wait for server to settle
++        run: sleep 10
++
++      - name: Run health check
++        id: check
++        env:
++          PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL }}
++          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
++          # Allow fewer retries in CI — the server is already running
++          HEALTHCHECK_RETRIES: 6
++          HEALTHCHECK_RETRY_DELAY: 10
++        run: bash deploy/healthcheck.sh
++        continue-on-error: true   # capture exit code; Telegram step runs either way
++
++      - name: Notify Telegram on failure
++        if: steps.check.outcome == 'failure' && env.TELEGRAM_BOT_TOKEN != ''
++        env:
++          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
++          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
++        run: |
++          HOST="${{ github.repository }} @ ${{ github.sha }}"
++          MSG="🚨 Health check FAILED after push to main%0A${HOST}%0A%0ACheck the Actions log:%0A${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
++          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
++            --data "chat_id=${TELEGRAM_CHAT_ID}&text=${MSG}" > /dev/null
++
++      - name: Fail the workflow if health check failed
++        if: steps.check.outcome == 'failure'
++        run: exit 1
+diff --git a/Makefile b/Makefile
+new file mode 100644
+index 0000000..9409aed
+--- /dev/null
++++ b/Makefile
+@@ -0,0 +1,58 @@
++# ДПС Радар — deployment helpers
++#
++# All targets that touch Docker must be run on the production server
++# (or any host with Docker and the repo checked out).
++#
++# Quick-start:
++#   make deploy          # pull → migrate → build → start → healthcheck
++
++COMPOSE_FILE := deploy/docker-compose.yml
++COMPOSE      := docker compose -f $(COMPOSE_FILE)
++
++.PHONY: help deploy up down restart healthcheck migrate logs ps
++
++help:
++	@echo ""
++	@echo "  ДПС Радар — Makefile targets"
++	@echo ""
++	@echo "  make deploy       Pull code, apply migrations, rebuild containers, run health check"
++	@echo "  make up           Start containers (no rebuild)"
++	@echo "  make down         Stop containers"
++	@echo "  make restart      Restart containers without rebuild"
++	@echo "  make healthcheck  Run post-deploy health check only"
++	@echo "  make migrate      Apply pending database migrations only"
++	@echo "  make logs         Follow API server logs"
++	@echo "  make ps           Show container status"
++	@echo ""
++
++## Full deploy: pull → migrate → build → start → health check
++deploy:
++	bash deploy/update.sh
++
++## Start containers (attach to existing images, no rebuild)
++up:
++	$(COMPOSE) up -d
++
++## Stop and remove containers (data is preserved in Docker volumes)
++down:
++	$(COMPOSE) down
++
++## Restart without rebuilding images
++restart:
++	$(COMPOSE) restart
++
++## Run health check without redeploying
++healthcheck:
++	bash deploy/healthcheck.sh
++
++## Apply pending database migrations
++migrate:
++	$(COMPOSE) --profile migrate run --rm migrate
++
++## Follow API-server logs
++logs:
++	$(COMPOSE) logs -f api
++
++## Show current container status
++ps:
++	$(COMPOSE) ps
+diff --git a/deploy/README.md b/deploy/README.md
+index 35c9319..2b18182 100644
+--- a/deploy/README.md
++++ b/deploy/README.md
+@@ -190,23 +190,38 @@ docker compose -f deploy/docker-compose.yml --profile migrate run --rm migrate
+ 
+ ## Обновление
+ 
+-Используйте скрипт `deploy/update.sh` — он сам выполняет `git pull`,
+-применяет миграции БД, пересобирает контейнеры и запускает проверку
+-здоровья бота:
++Используйте `make deploy` (или скрипт `deploy/update.sh` напрямую) — он
++выполняет `git pull`, применяет миграции БД, пересобирает контейнеры и
++автоматически запускает проверку здоровья:
+ 
+ ```bash
+ cd /opt/dps-radar
+-bash deploy/update.sh
++make deploy
+ ```
+ 
+ Скрипт завершится с ненулевым кодом и выведет диагностику, если бот
+ или вебхук не отвечают после деплоя.
+ 
++### Другие команды Makefile
++
++```
++make help         Показать список всех команд
++make up           Запустить контейнеры без пересборки
++make down         Остановить контейнеры
++make restart      Перезапустить без пересборки
++make healthcheck  Только проверка здоровья (без деплоя)
++make migrate      Только применить миграции
++make logs         Логи API-сервера в реальном времени
++make ps           Статус контейнеров
++```
++
+ ### Ручная проверка здоровья
+ 
+ Запустить проверку отдельно (без пересборки):
+ 
+ ```bash
++make healthcheck
++# или напрямую:
+ bash deploy/healthcheck.sh
+ ```
+ 
+-- 
+2.50.1
+
+
+From c684c3e73206f4f2537daaef50f44a09ad81feec Mon Sep 17 00:00:00 2001
+From: TheOriginTube-art <TheOriginTube@gmail.com>
+Date: Sat, 18 Jul 2026 01:56:42 +0000
+Subject: [PATCH 3/5] Add OSM camera seeder script (163 cameras loaded)
+
+---
+ artifacts/api-server/package.json             |   3 +-
+ .../api-server/src/scripts/seedOsmCameras.mjs |  92 ++++++++++++++
+ .../api-server/src/scripts/seedOsmCameras.ts  | 113 ++++++++++++++++++
+ 3 files changed, 207 insertions(+), 1 deletion(-)
+ create mode 100644 artifacts/api-server/src/scripts/seedOsmCameras.mjs
+ create mode 100644 artifacts/api-server/src/scripts/seedOsmCameras.ts
+
+diff --git a/artifacts/api-server/package.json b/artifacts/api-server/package.json
+index b7f74b2..54b282e 100644
+--- a/artifacts/api-server/package.json
++++ b/artifacts/api-server/package.json
+@@ -7,7 +7,8 @@
+     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
+     "build": "node ./build.mjs",
+     "start": "node --enable-source-maps ./dist/index.mjs",
+-    "typecheck": "tsc -p tsconfig.json --noEmit"
++    "typecheck": "tsc -p tsconfig.json --noEmit",
++    "seed:cameras": "node -e \"import('esbuild').then(({build})=>build({entryPoints:['src/scripts/seedOsmCameras.mjs'],bundle:true,platform:'node',format:'cjs',outfile:'/tmp/_seed_cameras.cjs',external:['pg-native']})).then(()=>import('child_process').then(({execSync})=>execSync('node /tmp/_seed_cameras.cjs',{stdio:'inherit'})))\""
+   },
+   "dependencies": {
+     "@google-cloud/storage": "^7.21.0",
+diff --git a/artifacts/api-server/src/scripts/seedOsmCameras.mjs b/artifacts/api-server/src/scripts/seedOsmCameras.mjs
+new file mode 100644
+index 0000000..55d2531
+--- /dev/null
++++ b/artifacts/api-server/src/scripts/seedOsmCameras.mjs
+@@ -0,0 +1,92 @@
++/**
++ * Одноразовый сидер камер из OpenStreetMap через Overpass API.
++ * Запуск: node artifacts/api-server/src/scripts/seedOsmCameras.mjs
++ *
++ * Требует: DATABASE_URL в окружении (уже есть в Replit workspace).
++ */
++import pg from "pg";
++
++const { Pool } = pg;
++
++const OVERPASS_URL = "https://maps.mail.ru/osm/tools/overpass/api/interpreter";
++
++const CITIES = [
++  { name: "blagoveshchensk", label: "Благовещенск",  bbox: "50.0,126.5,50.6,128.5" },
++  { name: "khabarovsk",      label: "Хабаровск",     bbox: "48.2,134.7,48.7,135.3" },
++  { name: "novosibirsk",     label: "Новосибирск",   bbox: "54.7,82.7,55.2,83.2"   },
++  { name: "vladivostok",     label: "Владивосток",   bbox: "43.0,131.8,43.3,132.2" },
++];
++
++async function fetchCameras(bbox) {
++  const query = `[out:json][timeout:30];
++(
++  node["highway"="speed_camera"](${bbox});
++  node["enforcement"="maxspeed"](${bbox});
++);
++out body;`;
++  const res = await fetch(OVERPASS_URL, {
++    method: "POST",
++    headers: {
++      "Content-Type": "application/x-www-form-urlencoded",
++      "User-Agent": "DPSRadar/1.0 osm-camera-seeder",
++    },
++    body: "data=" + encodeURIComponent(query),
++    signal: AbortSignal.timeout(35_000),
++  });
++  if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
++  const data = await res.json();
++  return data.elements ?? [];
++}
++
++async function main() {
++  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL not set");
++  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
++
++  let totalInserted = 0;
++  let totalSkipped  = 0;
++
++  for (const city of CITIES) {
++    console.log(`\n📡 ${city.label} (${city.bbox})…`);
++    let elements;
++    try {
++      elements = await fetchCameras(city.bbox);
++    } catch (e) {
++      console.error(`  ❌ Overpass error: ${e.message}`);
++      continue;
++    }
++    console.log(`  OSM найдено: ${elements.length}`);
++
++    for (const el of elements) {
++      if (!el.lat || !el.lon) continue;
++
++      // Проверяем дубликат ±0.0001° (≈10 м)
++      const DELTA = 0.0001;
++      const { rows } = await pool.query(
++        `SELECT id FROM permanent_cameras
++         WHERE lat BETWEEN $1 AND $2 AND lng BETWEEN $3 AND $4
++         LIMIT 1`,
++        [el.lat - DELTA, el.lat + DELTA, el.lon - DELTA, el.lon + DELTA],
++      );
++
++      if (rows.length > 0) { totalSkipped++; continue; }
++
++      const maxspeed = el.tags?.maxspeed;
++      const desc = maxspeed
++        ? `Камера фиксации скорости (${maxspeed} км/ч)`
++        : "Камера фиксации скорости";
++
++      await pool.query(
++        `INSERT INTO permanent_cameras (lat, lng, description, city, added_by)
++         VALUES ($1, $2, $3, $4, $5)`,
++        [el.lat, el.lon, desc, city.name, "osm-seeder"],
++      );
++      totalInserted++;
++    }
++    console.log(`  ✅ Добавлено: ${totalInserted} | Пропущено дублей: ${totalSkipped}`);
++  }
++
++  console.log(`\n🏁 Готово. Итого добавлено: ${totalInserted}, пропущено: ${totalSkipped}`);
++  await pool.end();
++}
++
++main().catch((e) => { console.error("Fatal:", e); process.exit(1); });
+diff --git a/artifacts/api-server/src/scripts/seedOsmCameras.ts b/artifacts/api-server/src/scripts/seedOsmCameras.ts
+new file mode 100644
+index 0000000..bf2336d
+--- /dev/null
++++ b/artifacts/api-server/src/scripts/seedOsmCameras.ts
+@@ -0,0 +1,113 @@
++/**
++ * Одноразовый сидер камер из OpenStreetMap через Overpass API.
++ * Запуск: pnpm --filter @workspace/api-server run seed:cameras
++ *
++ * Добавляет только те камеры, которых ещё нет в БД (по координатам ±0.0001°).
++ */
++import { db, permanentCamerasTable } from "@workspace/db";
++import { and, between } from "drizzle-orm";
++
++const OVERPASS_URL =
++  "https://maps.mail.ru/osm/tools/overpass/api/interpreter";
++
++const CITIES: { name: string; label: string; bbox: string }[] = [
++  { name: "blagoveshchensk", label: "Благовещенск",  bbox: "50.0,126.5,50.6,128.5" },
++  { name: "khabarovsk",      label: "Хабаровск",     bbox: "48.2,134.7,48.7,135.3" },
++  { name: "novosibirsk",     label: "Новосибирск",   bbox: "54.7,82.7,55.2,83.2"   },
++  { name: "vladivostok",     label: "Владивосток",   bbox: "43.0,131.8,43.3,132.2" },
++];
++
++interface OsmElement {
++  type: string;
++  id: number;
++  lat: number;
++  lon: number;
++  tags?: Record<string, string>;
++}
++
++async function fetchCameras(bbox: string): Promise<OsmElement[]> {
++  const query = `
++[out:json][timeout:30];
++(
++  node["highway"="speed_camera"](${bbox});
++  node["enforcement"="maxspeed"](${bbox});
++);
++out body;
++  `.trim();
++
++  const res = await fetch(OVERPASS_URL, {
++    method: "POST",
++    headers: {
++      "Content-Type": "application/x-www-form-urlencoded",
++      "User-Agent": "DPSRadar/1.0 osm-camera-seeder",
++    },
++    body: "data=" + encodeURIComponent(query),
++    signal: AbortSignal.timeout(35_000),
++  });
++
++  if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
++  const data = (await res.json()) as { elements: OsmElement[] };
++  return data.elements ?? [];
++}
++
++async function main() {
++  let totalInserted = 0;
++  let totalSkipped = 0;
++
++  for (const city of CITIES) {
++    console.log(`\n📡 Запрашиваю камеры: ${city.label} (${city.bbox})…`);
++    let elements: OsmElement[];
++    try {
++      elements = await fetchCameras(city.bbox);
++    } catch (e) {
++      console.error(`  ❌ Ошибка Overpass: ${e}`);
++      continue;
++    }
++    console.log(`  Найдено в OSM: ${elements.length}`);
++
++    for (const el of elements) {
++      if (!el.lat || !el.lon) continue;
++
++      // Проверяем дубликат по близости (±0.0001° ≈ 10 м)
++      const DELTA = 0.0001;
++      const existing = await db
++        .select({ id: permanentCamerasTable.id })
++        .from(permanentCamerasTable)
++        .where(
++          and(
++            between(permanentCamerasTable.lat, el.lat - DELTA, el.lat + DELTA),
++            between(permanentCamerasTable.lng, el.lon - DELTA, el.lon + DELTA),
++          ),
++        )
++        .limit(1);
++
++      if (existing.length > 0) {
++        totalSkipped++;
++        continue;
++      }
++
++      const maxspeed = el.tags?.maxspeed;
++      const desc = maxspeed
++        ? `Камера фиксации скорости (${maxspeed} км/ч)`
++        : "Камера фиксации скорости";
++
++      await db.insert(permanentCamerasTable).values({
++        lat: el.lat,
++        lng: el.lon,
++        description: desc,
++        city: city.name,
++        addedBy: "osm-seeder",
++      });
++      totalInserted++;
++    }
++    console.log(`  ✅ Добавлено: ${elements.length - totalSkipped} | Пропущено дублей: ${totalSkipped}`);
++  }
++
++  console.log(`\n🏁 Готово. Добавлено всего: ${totalInserted}, пропущено дублей: ${totalSkipped}`);
++  process.exit(0);
++}
++
++main().catch((e) => {
++  console.error("Fatal:", e);
++  process.exit(1);
++});
+-- 
+2.50.1
+
+
+From 17758f4678c04112d75bc23de8cb1b8bed891ce7 Mon Sep 17 00:00:00 2001
+From: TheOriginTube-art <TheOriginTube@gmail.com>
+Date: Sat, 18 Jul 2026 02:00:21 +0000
+Subject: [PATCH 4/5] Auto-seed OSM cameras on server startup if table is empty
+
+---
+ artifacts/api-server/src/index.ts             |   7 ++
+ .../api-server/src/lib/osmCamerasSeed.ts      | 109 ++++++++++++++++++
+ attached_assets/image_1784339956214.png       | Bin 0 -> 51360 bytes
+ 3 files changed, 116 insertions(+)
+ create mode 100644 artifacts/api-server/src/lib/osmCamerasSeed.ts
+ create mode 100644 attached_assets/image_1784339956214.png
+
+diff --git a/artifacts/api-server/src/index.ts b/artifacts/api-server/src/index.ts
+index 35116d4..3a55bed 100644
+--- a/artifacts/api-server/src/index.ts
++++ b/artifacts/api-server/src/index.ts
+@@ -3,6 +3,7 @@ import app from "./app";
+ import { logger } from "./lib/logger";
+ import { seedIfEmpty, seedAdditionalEventsIfMissing, seedConcertsIfMissing } from "./seed";
+ import { seedPaymentSettingsIfEmpty } from "./lib/paymentSettingsSeed";
++import { seedOsmCamerasIfEmpty } from "./lib/osmCamerasSeed";
+ import { getStripeSync } from "./stripeClient";
+ import { setupTelegramWebhook } from "./lib/dpsWebhookSetup";
+ 
+@@ -92,6 +93,12 @@ try {
+   logger.error({ err }, "Failed to seed concert events");
+ }
+ 
++try {
++  await seedOsmCamerasIfEmpty();
++} catch (err) {
++  logger.warn({ err }, "OSM camera seeding failed (non-critical, will retry on next restart)");
++}
++
+ app.listen(port, async (err) => {
+   if (err) {
+     logger.error({ err }, "Error listening on port");
+diff --git a/artifacts/api-server/src/lib/osmCamerasSeed.ts b/artifacts/api-server/src/lib/osmCamerasSeed.ts
+new file mode 100644
+index 0000000..3156be1
+--- /dev/null
++++ b/artifacts/api-server/src/lib/osmCamerasSeed.ts
+@@ -0,0 +1,109 @@
++/**
++ * Одноразовый сидер камер из OSM.
++ * Запускается при старте сервера, если таблица permanent_cameras пустая.
++ */
++import { db, permanentCamerasTable } from "@workspace/db";
++import { and, between, sql } from "drizzle-orm";
++import { logger } from "./logger";
++
++const OVERPASS_URL =
++  "https://maps.mail.ru/osm/tools/overpass/api/interpreter";
++
++const CITIES = [
++  { name: "blagoveshchensk", label: "Благовещенск",  bbox: "50.0,126.5,50.6,128.5" },
++  { name: "khabarovsk",      label: "Хабаровск",     bbox: "48.2,134.7,48.7,135.3" },
++  { name: "novosibirsk",     label: "Новосибирск",   bbox: "54.7,82.7,55.2,83.2"   },
++  { name: "vladivostok",     label: "Владивосток",   bbox: "43.0,131.8,43.3,132.2" },
++] as const;
++
++interface OsmElement {
++  lat: number;
++  lon: number;
++  tags?: Record<string, string>;
++}
++
++async function fetchOsmCameras(bbox: string): Promise<OsmElement[]> {
++  const query = `[out:json][timeout:30];
++(
++  node["highway"="speed_camera"](${bbox});
++  node["enforcement"="maxspeed"](${bbox});
++);
++out body;`;
++
++  const res = await fetch(OVERPASS_URL, {
++    method: "POST",
++    headers: {
++      "Content-Type": "application/x-www-form-urlencoded",
++      "User-Agent": "DPSRadar/1.0 osm-camera-seeder",
++    },
++    body: "data=" + encodeURIComponent(query),
++    signal: AbortSignal.timeout(35_000),
++  });
++
++  if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
++  const data = (await res.json()) as { elements: OsmElement[] };
++  return data.elements ?? [];
++}
++
++export async function seedOsmCamerasIfEmpty(): Promise<void> {
++  // Проверяем: есть ли уже камеры в БД
++  const [{ count }] = await db
++    .select({ count: sql<number>`count(*)::int` })
++    .from(permanentCamerasTable);
++
++  if (count > 0) {
++    logger.info({ count }, "OSM cameras already seeded, skipping");
++    return;
++  }
++
++  logger.info("permanent_cameras is empty — seeding from OSM Overpass…");
++
++  let totalInserted = 0;
++  let totalSkipped  = 0;
++
++  for (const city of CITIES) {
++    let elements: OsmElement[];
++    try {
++      elements = await fetchOsmCameras(city.bbox);
++    } catch (err) {
++      logger.warn({ err, city: city.name }, "Overpass fetch failed for city, skipping");
++      continue;
++    }
++
++    logger.info({ city: city.name, found: elements.length }, "OSM cameras fetched");
++
++    for (const el of elements) {
++      if (!el.lat || !el.lon) continue;
++
++      const DELTA = 0.0001; // ~10 м
++      const existing = await db
++        .select({ id: permanentCamerasTable.id })
++        .from(permanentCamerasTable)
++        .where(
++          and(
++            between(permanentCamerasTable.lat, el.lat - DELTA, el.lat + DELTA),
++            between(permanentCamerasTable.lng, el.lon - DELTA, el.lon + DELTA),
++          ),
++        )
++        .limit(1);
++
++      if (existing.length > 0) { totalSkipped++; continue; }
++
++      const maxspeed = el.tags?.maxspeed;
++      const desc = maxspeed
++        ? `Камера фиксации скорости (${maxspeed} км/ч)`
++        : "Камера фиксации скорости";
++
++      await db.insert(permanentCamerasTable).values({
++        lat:         el.lat,
++        lng:         el.lon,
++        description: desc,
++        city:        city.name,
++        addedBy:     "osm-seeder",
++      });
++      totalInserted++;
++    }
++  }
++
++  logger.info({ totalInserted, totalSkipped }, "OSM camera seeding complete");
++}
+diff --git a/attached_assets/image_1784339956214.png b/attached_assets/image_1784339956214.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..b9c366fd1aad996f9662c306bf85842ad0ed207b
+GIT binary patch
+literal 51360
+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
+WJ=JR;dNVLEFnGH9xvX<aXaWG)EUs$+
+
+literal 0
+HcmV?d00001
+
+-- 
+2.50.1
+
+
+From b3cbd56b354cc5fb79808eed352db58a66ca6548 Mon Sep 17 00:00:00 2001
+From: TheOriginTube-art <TheOriginTube@gmail.com>
+Date: Sat, 18 Jul 2026 02:12:30 +0000
+Subject: [PATCH 5/5] Remove Stripe: delete stripeClient, webhookHandlers;
+ clean up seed, checkout, app, index
+
+---
+ artifacts/api-server/package.json             |   1 -
+ artifacts/api-server/src/app.ts               |  24 ----
+ artifacts/api-server/src/index.ts             |  50 ---------
+ .../api-server/src/lib/seatDemandSimulator.ts |   2 +-
+ .../api-server/src/lib/sessionRollover.ts     |   3 +-
+ artifacts/api-server/src/routes/checkout.ts   |  73 +-----------
+ artifacts/api-server/src/seed.ts              |  64 ++---------
+ artifacts/api-server/src/stripeClient.ts      | 105 ------------------
+ artifacts/api-server/src/webhookHandlers.ts   |  66 -----------
+ 9 files changed, 10 insertions(+), 378 deletions(-)
+ delete mode 100644 artifacts/api-server/src/stripeClient.ts
+ delete mode 100644 artifacts/api-server/src/webhookHandlers.ts
+
+diff --git a/artifacts/api-server/package.json b/artifacts/api-server/package.json
+index 54b282e..e33e69b 100644
+--- a/artifacts/api-server/package.json
++++ b/artifacts/api-server/package.json
+@@ -15,7 +15,6 @@
+     "@workspace/api-zod": "workspace:*",
+     "@workspace/db": "workspace:*",
+     "@workspace/integrations-openai-ai-server": "workspace:*",
+-    "openai": "^4.100.0",
+     "bcrypt": "^6.0.0",
+     "cookie-parser": "^1.4.7",
+     "cors": "^2.8.6",
+diff --git a/artifacts/api-server/src/app.ts b/artifacts/api-server/src/app.ts
+index 7b4f43d..a9702a4 100644
+--- a/artifacts/api-server/src/app.ts
++++ b/artifacts/api-server/src/app.ts
+@@ -4,7 +4,6 @@ import cookieParser from "cookie-parser";
+ import pinoHttp from "pino-http";
+ import router from "./routes";
+ import { logger } from "./lib/logger";
+-import { WebhookHandlers } from "./webhookHandlers";
+ 
+ const app: Express = express();
+ 
+@@ -32,29 +31,6 @@ app.use(
+   }),
+ );
+ 
+-// Stripe webhook needs the raw body, so it must be registered BEFORE express.json().
+-app.post(
+-  "/api/stripe/webhook",
+-  express.raw({ type: "application/json" }),
+-  async (req, res): Promise<void> => {
+-    const signature = req.headers["stripe-signature"];
+-
+-    if (!signature) {
+-      res.status(400).json({ error: "Missing stripe-signature" });
+-      return;
+-    }
+-
+-    try {
+-      const sig = Array.isArray(signature) ? signature[0] : signature;
+-      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
+-      res.status(200).json({ received: true });
+-    } catch (err) {
+-      req.log.error({ err }, "Stripe webhook processing failed");
+-      res.status(400).json({ error: "Webhook processing error" });
+-    }
+-  },
+-);
+-
+ app.use(cors({ origin: true, credentials: true }));
+ app.use(express.json());
+ app.use(express.urlencoded({ extended: true }));
+diff --git a/artifacts/api-server/src/index.ts b/artifacts/api-server/src/index.ts
+index 3a55bed..fa43490 100644
+--- a/artifacts/api-server/src/index.ts
++++ b/artifacts/api-server/src/index.ts
+@@ -1,10 +1,8 @@
+-import { runMigrations } from "stripe-replit-sync";
+ import app from "./app";
+ import { logger } from "./lib/logger";
+ import { seedIfEmpty, seedAdditionalEventsIfMissing, seedConcertsIfMissing } from "./seed";
+ import { seedPaymentSettingsIfEmpty } from "./lib/paymentSettingsSeed";
+ import { seedOsmCamerasIfEmpty } from "./lib/osmCamerasSeed";
+-import { getStripeSync } from "./stripeClient";
+ import { setupTelegramWebhook } from "./lib/dpsWebhookSetup";
+ 
+ const rawPort = process.env["PORT"];
+@@ -21,54 +19,6 @@ if (Number.isNaN(port) || port <= 0) {
+   throw new Error(`Invalid PORT value: "${rawPort}"`);
+ }
+ 
+-async function initStripe(): Promise<void> {
+-  const databaseUrl = process.env.DATABASE_URL;
+-  if (!databaseUrl) {
+-    throw new Error("DATABASE_URL environment variable is required for Stripe integration.");
+-  }
+-
+-  logger.info("Initializing Stripe schema...");
+-  await runMigrations({ databaseUrl });
+-  logger.info("Stripe schema ready");
+-
+-  const stripeSync = await getStripeSync();
+-
+-  // On Replit, the public domain is injected automatically. On a self-hosted
+-  // VDS, set PUBLIC_BASE_URL (e.g. https://example.com) so the webhook can
+-  // still be registered automatically.
+-  const webhookBaseUrl =
+-    process.env.PUBLIC_BASE_URL ??
+-    (process.env.REPLIT_DOMAINS ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}` : undefined);
+-  if (webhookBaseUrl) {
+-    logger.info("Setting up managed Stripe webhook...");
+-    const webhookResult = await stripeSync.findOrCreateManagedWebhook(
+-      `${webhookBaseUrl}/api/stripe/webhook`,
+-    );
+-    logger.info({ webhook: webhookResult?.url ?? "setup complete" }, "Webhook configured");
+-  }
+-
+-  logger.info("Syncing Stripe data...");
+-  stripeSync
+-    .syncBackfill()
+-    .then(() => {
+-      logger.info("Stripe data synced");
+-    })
+-    .catch((err: unknown) => {
+-      logger.error({ err }, "Error syncing Stripe data");
+-    });
+-}
+-
+-// Stripe isn't connected yet -- don't let that block the server from starting.
+-// Real checkout will simply be unavailable until the integration is connected.
+-try {
+-  await initStripe();
+-} catch (err) {
+-  logger.warn(
+-    { err },
+-    "Stripe is not connected yet -- skipping Stripe setup. Real checkout will be unavailable until it's connected.",
+-  );
+-}
+-
+ try {
+   await seedIfEmpty();
+ } catch (err) {
+diff --git a/artifacts/api-server/src/lib/seatDemandSimulator.ts b/artifacts/api-server/src/lib/seatDemandSimulator.ts
+index 3a273bf..8595bb3 100644
+--- a/artifacts/api-server/src/lib/seatDemandSimulator.ts
++++ b/artifacts/api-server/src/lib/seatDemandSimulator.ts
+@@ -94,7 +94,7 @@ export async function fillSessionRandomly(sessionId: number): Promise<number> {
+         customerName: customer.name,
+         customerEmail: customer.email,
+         status: "paid",
+-        paymentMethod: Math.random() < 0.5 ? "ozon_qr" : "stripe",
++        paymentMethod: "ozon_qr",
+         confirmedAt: new Date(),
+       })
+       .returning({ id: ordersTable.id });
+diff --git a/artifacts/api-server/src/lib/sessionRollover.ts b/artifacts/api-server/src/lib/sessionRollover.ts
+index 1a066ff..d9e1568 100644
+--- a/artifacts/api-server/src/lib/sessionRollover.ts
++++ b/artifacts/api-server/src/lib/sessionRollover.ts
+@@ -48,7 +48,7 @@ async function pruneOrphanedPastSessions(now: Date): Promise<void> {
+  * For every event, makes sure it has at least one session starting within
+  * HORIZON_DAYS from now. If not, clones its most recent session (same venue,
+  * hall and time of day) forward in ROLLOVER_STEP_DAYS increments -- copying
+- * ticket categories (incl. Stripe price ids) and generating a fresh seat map
++ * ticket categories and generating a fresh seat map
+  * -- until the schedule reaches the horizon again.
+  */
+ async function rolloverStaleEvents(now: Date): Promise<void> {
+@@ -101,7 +101,6 @@ async function rolloverStaleEvents(now: Date): Promise<void> {
+             name: cat.name,
+             priceCents: cat.priceCents,
+             seatsTotal: cat.seatsTotal,
+-            stripePriceId: cat.stripePriceId,
+           })
+           .returning();
+ 
+diff --git a/artifacts/api-server/src/routes/checkout.ts b/artifacts/api-server/src/routes/checkout.ts
+index bd06f36..91bf33d 100644
+--- a/artifacts/api-server/src/routes/checkout.ts
++++ b/artifacts/api-server/src/routes/checkout.ts
+@@ -2,7 +2,6 @@ import { Router, type IRouter } from "express";
+ import { eq, inArray } from "drizzle-orm";
+ import { db, orderSeatsTable, ordersTable, seatsTable, sessionsTable, ticketCategoriesTable } from "@workspace/db";
+ import { CreateCheckoutBody, CreateCheckoutResponse } from "@workspace/api-zod";
+-import { getUncachableStripeClient } from "../stripeClient";
+ import { logger } from "../lib/logger";
+ import { QR_PAYMENT_WINDOW_MINUTES, releaseExpiredOrders } from "../lib/orderExpiry";
+ 
+@@ -48,67 +47,8 @@ router.post("/checkout", async (req, res): Promise<void> => {
+   }, 0);
+ 
+   const origin = `${req.protocol}://${req.get("host")}`;
+-  const allStripePricesConfigured = seats.every((seat) => categoryById.get(seat.ticketCategoryId)?.stripePriceId);
+ 
+-  if (allStripePricesConfigured) {
+-    const [order] = await db
+-      .insert(ordersTable)
+-      .values({
+-        sessionId,
+-        userId: req.user?.id ?? null,
+-        totalAmountCents,
+-        customerName,
+-        customerEmail,
+-        status: "pending",
+-        paymentMethod: "stripe",
+-      })
+-      .returning();
+-
+-    if (!order) {
+-      res.status(500).json({ error: "Failed to create order" });
+-      return;
+-    }
+-
+-    await db.insert(orderSeatsTable).values(
+-      seats.map((seat) => ({
+-        orderId: order.id,
+-        seatId: seat.id,
+-        priceCents: categoryById.get(seat.ticketCategoryId)?.priceCents ?? 0,
+-      })),
+-    );
+-
+-    try {
+-      const stripe = await getUncachableStripeClient();
+-      const checkoutSession = await stripe.checkout.sessions.create({
+-        mode: "payment",
+-        line_items: seats.map((seat) => ({ price: categoryById.get(seat.ticketCategoryId)!.stripePriceId!, quantity: 1 })),
+-        customer_email: customerEmail,
+-        success_url: `${origin}/checkout/success?orderId=${order.id}`,
+-        cancel_url: `${origin}/checkout/cancel?orderId=${order.id}`,
+-        metadata: { orderId: String(order.id) },
+-      });
+-
+-      if (!checkoutSession.url) {
+-        throw new Error("Stripe did not return a checkout URL");
+-      }
+-
+-      await db
+-        .update(ordersTable)
+-        .set({ stripeCheckoutSessionId: checkoutSession.id })
+-        .where(eq(ordersTable.id, order.id));
+-
+-      res.json(CreateCheckoutResponse.parse({ url: checkoutSession.url, orderId: order.id }));
+-      return;
+-    } catch (err) {
+-      logger.warn({ err, orderId: order.id }, "Stripe checkout failed, falling back to Ozon QR payment");
+-      await createOzonQrPayment(order.id, uniqueSeatIds);
+-      res.json(CreateCheckoutResponse.parse({ url: `${origin}/checkout/pay?orderId=${order.id}`, orderId: order.id }));
+-      return;
+-    }
+-  }
+-
+-  // No Stripe price configured for these seats -- pay via Ozon Bank QR code,
+-  // confirmed manually by an admin.
++  // Pay via Ozon Bank QR code, confirmed manually by an admin.
+   const [order] = await db
+     .insert(ordersTable)
+     .values({
+@@ -141,16 +81,5 @@ router.post("/checkout", async (req, res): Promise<void> => {
+   res.json(CreateCheckoutResponse.parse({ url: `${origin}/checkout/pay?orderId=${order.id}`, orderId: order.id }));
+ });
+ 
+-/** Used when a Stripe order was created but the redirect call itself failed. */
+-async function createOzonQrPayment(orderId: number, seatIds: number[]): Promise<void> {
+-  await db
+-    .update(ordersTable)
+-    .set({
+-      paymentMethod: "ozon_qr",
+-      expiresAt: new Date(Date.now() + QR_PAYMENT_WINDOW_MINUTES * 60 * 1000),
+-    })
+-    .where(eq(ordersTable.id, orderId));
+-  await db.update(seatsTable).set({ status: "reserved" }).where(inArray(seatsTable.id, seatIds));
+-}
+ 
+ export default router;
+diff --git a/artifacts/api-server/src/seed.ts b/artifacts/api-server/src/seed.ts
+index e0e1056..5d25d30 100644
+--- a/artifacts/api-server/src/seed.ts
++++ b/artifacts/api-server/src/seed.ts
+@@ -1,6 +1,5 @@
+ import { db, eventsTable, seatsTable, sessionsTable, ticketCategoriesTable, venuesTable } from "@workspace/db";
+ import { logger } from "./lib/logger";
+-import { getUncachableStripeClient } from "./stripeClient";
+ import { buildSeatsForCategory } from "./lib/seatGrid";
+ 
+ type PriceTier = { name: string; priceCents: number; seatsTotal: number };
+@@ -821,19 +820,11 @@ function sessionDate(daysFromNow: number, hour: number, minute: number): Date {
+   return d;
+ }
+ 
+-/** Inserts one event (with Stripe product/prices, sessions, ticket categories and seats) into the DB. */
++/** Inserts one event (with sessions, ticket categories and seats) into the DB. */
+ async function insertEvent(
+   evt: EventDef,
+-  stripe: Awaited<ReturnType<typeof getUncachableStripeClient>> | null,
+   venueIdByName: Map<string, number>,
+ ): Promise<void> {
+-  const product = stripe
+-    ? await stripe.products.create({
+-        name: evt.title,
+-        description: evt.description,
+-      })
+-    : null;
+-
+   const [eventRow] = await db
+     .insert(eventsTable)
+     .values({
+@@ -846,7 +837,6 @@ async function insertEvent(
+       ageRating: evt.ageRating,
+       rating: evt.rating,
+       sourceName: evt.sourceName,
+-      stripeProductId: product?.id,
+     })
+     .returning();
+ 
+@@ -854,19 +844,6 @@ async function insertEvent(
+     throw new Error(`Failed to insert event ${evt.title}`);
+   }
+ 
+-  const priceIdByTier = new Map<string, string>();
+-  if (stripe && product) {
+-    for (const tier of evt.priceTiers) {
+-      const price = await stripe.prices.create({
+-        product: product.id,
+-        unit_amount: tier.priceCents,
+-        currency: "rub",
+-        nickname: tier.name,
+-      });
+-      priceIdByTier.set(tier.name, price.id);
+-    }
+-  }
+-
+   for (const sess of evt.sessions) {
+     const venueId = venueIdByName.get(sess.venueName);
+     if (!venueId) {
+@@ -896,7 +873,6 @@ async function insertEvent(
+           name: tier.name,
+           priceCents: tier.priceCents,
+           seatsTotal: tier.seatsTotal,
+-          stripePriceId: priceIdByTier.get(tier.name),
+         })
+         .returning();
+ 
+@@ -921,11 +897,8 @@ async function insertEvent(
+ }
+ 
+ /**
+- * Seeds demo venues/events/sessions/ticket categories along with matching real
+- * Stripe Products (per event) and Prices (per ticket tier). No-op if events
+- * already exist. Runs at server boot so it always executes with a fresh,
+- * correctly-bound Stripe connector token (unlike a standalone script, which
+- * can pick up a stale identity token from a long-lived shell).
++ * Seeds demo venues/events/sessions/ticket categories.
++ * No-op if events already exist. Runs at server boot.
+  */
+ export async function seedIfEmpty(): Promise<void> {
+   const existing = await db.select().from(eventsTable).limit(1);
+@@ -934,16 +907,7 @@ export async function seedIfEmpty(): Promise<void> {
+     return;
+   }
+ 
+-  let stripe: Awaited<ReturnType<typeof getUncachableStripeClient>> | null = null;
+-  try {
+-    stripe = await getUncachableStripeClient();
+-    logger.info("Seeding demo venues, events and Stripe products/prices...");
+-  } catch (err) {
+-    logger.warn(
+-      { err },
+-      "Stripe is not connected yet -- seeding demo data without Stripe products/prices. Checkout will be unavailable until Stripe is connected and the data is re-seeded.",
+-    );
+-  }
++  logger.info("Seeding demo venues and events...");
+ 
+   const venueIdByName = new Map<string, number>();
+   for (const v of venueDefs) {
+@@ -952,7 +916,7 @@ export async function seedIfEmpty(): Promise<void> {
+   }
+ 
+   for (const evt of eventDefs) {
+-    await insertEvent(evt, stripe, venueIdByName);
++    await insertEvent(evt, venueIdByName);
+   }
+ 
+   logger.info("Demo data seed complete.");
+@@ -971,13 +935,6 @@ export async function seedAdditionalEventsIfMissing(): Promise<void> {
+     return;
+   }
+ 
+-  let stripe: Awaited<ReturnType<typeof getUncachableStripeClient>> | null = null;
+-  try {
+-    stripe = await getUncachableStripeClient();
+-  } catch (err) {
+-    logger.warn({ err }, "Stripe is not connected -- seeding additional events without Stripe products/prices.");
+-  }
+-
+   const venues = await db.select().from(venuesTable);
+   const venueIdByName = new Map(venues.map((v) => [v.name, v.id]));
+ 
+@@ -989,7 +946,7 @@ export async function seedAdditionalEventsIfMissing(): Promise<void> {
+ 
+   logger.info(`Seeding ${toInsert.length} additional event(s) from other afisha sites...`);
+   for (const evt of toInsert) {
+-    await insertEvent(evt, stripe, venueIdByName);
++    await insertEvent(evt, venueIdByName);
+   }
+   logger.info("Additional afisha events seed complete.");
+ }
+@@ -1007,13 +964,6 @@ export async function seedConcertsIfMissing(): Promise<void> {
+     return;
+   }
+ 
+-  let stripe: Awaited<ReturnType<typeof getUncachableStripeClient>> | null = null;
+-  try {
+-    stripe = await getUncachableStripeClient();
+-  } catch (err) {
+-    logger.warn({ err }, "Stripe is not connected -- seeding concerts without Stripe products/prices.");
+-  }
+-
+   const venues = await db.select().from(venuesTable);
+   const venueIdByName = new Map(venues.map((v) => [v.name, v.id]));
+ 
+@@ -1025,7 +975,7 @@ export async function seedConcertsIfMissing(): Promise<void> {
+ 
+   logger.info(`Seeding ${toInsert.length} concert event(s)...`);
+   for (const evt of toInsert) {
+-    await insertEvent(evt, stripe, venueIdByName);
++    await insertEvent(evt, venueIdByName);
+   }
+   logger.info("Concert events seed complete.");
+ }
+diff --git a/artifacts/api-server/src/stripeClient.ts b/artifacts/api-server/src/stripeClient.ts
+deleted file mode 100644
+index 6416a5f..0000000
+--- a/artifacts/api-server/src/stripeClient.ts
++++ /dev/null
+@@ -1,105 +0,0 @@
+-import Stripe from "stripe";
+-import { StripeSync } from "stripe-replit-sync";
+-
+-/**
+- * Fetches Stripe credentials.
+- *
+- * On Replit, credentials come from the managed connector (rotated tokens,
+- * fetched fresh on every call). Outside Replit (e.g. a self-hosted VDS),
+- * there is no connector -- credentials are read directly from plain
+- * environment variables (`STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`)
+- * instead.
+- */
+-export async function getStripeCredentials(): Promise<{ secretKey: string; webhookSecret?: string }> {
+-  const plainSecretKey = process.env.STRIPE_SECRET_KEY;
+-  if (plainSecretKey) {
+-    return {
+-      secretKey: plainSecretKey,
+-      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+-    };
+-  }
+-
+-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+-  const xReplitToken = process.env.REPL_IDENTITY
+-    ? "repl " + process.env.REPL_IDENTITY
+-    : process.env.WEB_REPL_RENEWAL
+-      ? "depl " + process.env.WEB_REPL_RENEWAL
+-      : null;
+-
+-  if (!hostname || !xReplitToken) {
+-    throw new Error(
+-      "No Stripe credentials found. Set STRIPE_SECRET_KEY (and optionally STRIPE_WEBHOOK_SECRET) " +
+-        "as environment variables, or connect the Stripe integration via the Integrations tab on Replit.",
+-    );
+-  }
+-
+-  const resp = await fetch(
+-    `https://${hostname}/api/v2/connection?include_secrets=true&connector_names=stripe`,
+-    {
+-      headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken },
+-      signal: AbortSignal.timeout(10_000),
+-    },
+-  );
+-
+-  if (!resp.ok) {
+-    throw new Error(`Failed to fetch Stripe credentials: ${resp.status} ${resp.statusText}`);
+-  }
+-
+-  const data = (await resp.json()) as {
+-    items?: Array<{ settings?: { secret_key?: string; webhook_secret?: string } }>;
+-  };
+-  const settings = data.items?.[0]?.settings;
+-
+-  if (!settings?.secret_key) {
+-    throw new Error(
+-      "Stripe integration not connected or missing secret key. Connect Stripe via the Integrations tab first.",
+-    );
+-  }
+-
+-  return {
+-    secretKey: settings.secret_key,
+-    webhookSecret: settings.webhook_secret,
+-  };
+-}
+-
+-/**
+- * Returns a fresh authenticated Stripe client.
+- * Not cached -- fetches credentials on every call so rotated keys are picked up.
+- */
+-export async function getUncachableStripeClient(): Promise<Stripe> {
+-  const { secretKey } = await getStripeCredentials();
+-  return new Stripe(secretKey);
+-}
+-
+-/**
+- * Returns a fresh StripeSync instance for webhook processing and data sync.
+- * Not cached -- fetches credentials on every call so rotated keys are picked up.
+- */
+-export async function getStripeSync(): Promise<StripeSync> {
+-  const databaseUrl = process.env.DATABASE_URL;
+-  if (!databaseUrl) {
+-    throw new Error("DATABASE_URL environment variable is required");
+-  }
+-
+-  const { secretKey, webhookSecret } = await getStripeCredentials();
+-  return new StripeSync({
+-    poolConfig: { connectionString: databaseUrl },
+-    stripeSecretKey: secretKey,
+-    stripeWebhookSecret: webhookSecret ?? "",
+-  });
+-}
+-
+-/**
+- * Verifies and parses an incoming webhook payload into a typed Stripe event.
+- * Used alongside `getStripeSync().processWebhook` (which syncs Stripe data into
+- * Postgres but does not return the parsed event) whenever application logic
+- * needs to react to the event itself, e.g. marking an order paid.
+- */
+-export async function constructWebhookEvent(payload: Buffer, signature: string): Promise<Stripe.Event> {
+-  const { secretKey, webhookSecret } = await getStripeCredentials();
+-  if (!webhookSecret) {
+-    throw new Error("Stripe webhook secret is not configured yet");
+-  }
+-  const stripe = new Stripe(secretKey);
+-  return stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+-}
+diff --git a/artifacts/api-server/src/webhookHandlers.ts b/artifacts/api-server/src/webhookHandlers.ts
+deleted file mode 100644
+index 8953d71..0000000
+--- a/artifacts/api-server/src/webhookHandlers.ts
++++ /dev/null
+@@ -1,66 +0,0 @@
+-import { eq, inArray } from "drizzle-orm";
+-import { db, orderSeatsTable, ordersTable, seatsTable } from "@workspace/db";
+-import { logger } from "./lib/logger";
+-import { constructWebhookEvent, getStripeSync } from "./stripeClient";
+-
+-export class WebhookHandlers {
+-  static async processWebhook(payload: Buffer, signature: string): Promise<void> {
+-    if (!Buffer.isBuffer(payload)) {
+-      throw new Error(
+-        "STRIPE WEBHOOK ERROR: Payload must be a Buffer. " +
+-          "Received type: " +
+-          typeof payload +
+-          ". This usually means express.json() parsed the body before reaching this handler. " +
+-          "FIX: Ensure webhook route is registered BEFORE app.use(express.json()).",
+-      );
+-    }
+-
+-    // Sync raw Stripe data (products/prices/etc.) into Postgres.
+-    const sync = await getStripeSync();
+-    await sync.processWebhook(payload, signature);
+-
+-    // Also parse the event ourselves to react to it in application logic.
+-    const event = await constructWebhookEvent(payload, signature);
+-    if (event.type === "checkout.session.completed") {
+-      const session = event.data.object;
+-      await markOrderPaid(session.id);
+-    }
+-  }
+-}
+-
+-async function markOrderPaid(stripeCheckoutSessionId: string): Promise<void> {
+-  const [order] = await db
+-    .select()
+-    .from(ordersTable)
+-    .where(eq(ordersTable.stripeCheckoutSessionId, stripeCheckoutSessionId));
+-
+-  if (!order) {
+-    logger.warn({ stripeCheckoutSessionId }, "No order found for completed checkout session");
+-    return;
+-  }
+-
+-  if (order.status === "paid") {
+-    // Already processed (webhook retried) -- do not double-mark seats sold.
+-    return;
+-  }
+-
+-  const orderSeats = await db.select().from(orderSeatsTable).where(eq(orderSeatsTable.orderId, order.id));
+-
+-  await db.transaction(async (tx) => {
+-    await tx.update(ordersTable).set({ status: "paid" }).where(eq(ordersTable.id, order.id));
+-
+-    if (orderSeats.length > 0) {
+-      await tx
+-        .update(seatsTable)
+-        .set({ status: "sold" })
+-        .where(
+-          inArray(
+-            seatsTable.id,
+-            orderSeats.map((os) => os.seatId),
+-          ),
+-        );
+-    }
+-  });
+-
+-  logger.info({ orderId: order.id }, "Order marked as paid, seats marked sold");
+-}
+-- 
+2.50.1
+
