@@ -2,7 +2,7 @@ import React from 'react';
 import * as L from 'leaflet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Navigation, Settings, MapPin, X, Check, Trash2, Camera, Play, Square, AlertTriangle, Send, User, Users, LocateFixed } from 'lucide-react';
+import { Navigation, Settings, MapPin, X, Check, Trash2, Camera, Play, Square, AlertTriangle, Send, User, Users, LocateFixed, Trophy } from 'lucide-react';
 import { useListDpsEvents, useGetDpsStats } from '@workspace/api-client-react';
 import { GeocodeResult, useGeocodeSearch } from '@/lib/nominatim';
 import { fetchOsrmRoute, calculateAvoidanceWaypoints, RouteResult } from '@/lib/osrm';
@@ -66,6 +66,26 @@ function loadCustomMarkers(): CustomMarker[] {
 }
 function saveCustomMarkers(markers: CustomMarker[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(markers));
+}
+
+// ─── Звуковой сигнал (Web Audio API) ──────────────────────────────────────────
+function playBeep() {
+  try {
+    const ctx = new AudioContext();
+    [0, 0.25, 0.5].forEach(t => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.6, ctx.currentTime + t);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.2);
+      osc.start(ctx.currentTime + t);
+      osc.stop(ctx.currentTime + t + 0.22);
+    });
+    setTimeout(() => ctx.close(), 2500);
+  } catch { /* AudioContext недоступен */ }
 }
 
 // ─── GPS позиция + скорость ───────────────────────────────────────────────────
@@ -168,6 +188,15 @@ export default function MapPage() {
   const [syncError,   setSyncError]   = React.useState('');
   const [pendingCount, setPendingCount] = React.useState(0);
   const prevPendingCountRef = React.useRef(0);
+
+  // Рейтинг
+  type LeaderEntry = { firstName: string; username: string | null; reportCount: number };
+  const [showLeaderboard, setShowLeaderboard] = React.useState(false);
+  const [leaderboard,     setLeaderboard]     = React.useState<LeaderEntry[]>([]);
+  const [lbLoading,       setLbLoading]       = React.useState(false);
+
+  // Звуковой сигнал — ключ уже-сработавшей камеры (чтобы не бипать непрерывно)
+  const alertedCamKeyRef = React.useRef<string | null>(null);
   const friendLocLayerRef = React.useRef<L.LayerGroup>(new L.LayerGroup());
 
   const BASE = (import.meta.env.BASE_URL as string) ?? '/dps-radar/';
@@ -388,6 +417,30 @@ export default function MapPage() {
 
     setNearestCam(best && (best as NearestCam).distM <= WARN_DIST ? best : null);
   }, [gps, osmCameras, events]);
+
+  // ── Звуковой сигнал при въезде в зону камеры ─────────────────────────────
+  React.useEffect(() => {
+    if (!nearestCam || nearestCam.distM > ALERT_DIST) {
+      alertedCamKeyRef.current = null; // сбрасываем при выезде
+      return;
+    }
+    // Ключ = округлённые координаты камеры через label+distM-bucket
+    const key = nearestCam.label;
+    if (alertedCamKeyRef.current === key) return; // уже бипали
+    alertedCamKeyRef.current = key;
+    playBeep();
+  }, [nearestCam]);
+
+  // ── Загрузка рейтинга ─────────────────────────────────────────────────────
+  React.useEffect(() => {
+    if (!showLeaderboard || leaderboard.length > 0) return;
+    setLbLoading(true);
+    fetch(`${BASE}api/dps-radar/leaderboard`)
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: LeaderEntry[]) => setLeaderboard(rows))
+      .catch(() => {})
+      .finally(() => setLbLoading(false));
+  }, [showLeaderboard, BASE, leaderboard.length]);
 
   // Курсор «прицел» когда добавляем метку
   React.useEffect(() => {
@@ -1224,6 +1277,15 @@ export default function MapPage() {
               )}
             </button>
 
+            {/* Рейтинг */}
+            <button
+              onClick={() => setShowLeaderboard(true)}
+              className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border bg-yellow-500/10 border-yellow-500/30 text-yellow-400 active:bg-yellow-500/25 transition-colors"
+            >
+              <Trophy className="w-3.5 h-3.5 shrink-0" />
+              <span>Рейтинг</span>
+            </button>
+
             <div className="flex-1" />
 
             {/* Метка */}
@@ -1494,6 +1556,61 @@ export default function MapPage() {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Рейтинг (bottom sheet) ─────────────────────────────────────── */}
+      {showLeaderboard && (
+        <div className="absolute inset-0 z-50 flex items-end" onClick={() => setShowLeaderboard(false)}>
+          <div
+            className="w-full bg-card border-t border-border rounded-t-3xl shadow-2xl"
+            style={{ maxHeight: '75vh', display: 'flex', flexDirection: 'column', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 shrink-0">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-yellow-400" />
+                <span className="font-bold text-base">Рейтинг репортёров</span>
+              </div>
+              <button onClick={() => setShowLeaderboard(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-4 pb-2 flex-1">
+              {lbLoading ? (
+                <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">Загрузка…</div>
+              ) : leaderboard.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
+                  <Trophy className="w-8 h-8 opacity-30" />
+                  <span className="text-sm">Пока нет данных</span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {leaderboard.map((entry, i) => {
+                    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl border ${
+                          i < 3 ? 'bg-yellow-500/10 border-yellow-500/20' : 'bg-white/5 border-white/10'
+                        }`}
+                      >
+                        <span className="text-xl w-8 text-center shrink-0">{medal}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold truncate">{entry.firstName}</div>
+                          {entry.username && <div className="text-xs text-muted-foreground">@{entry.username}</div>}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-base font-black text-yellow-400">{entry.reportCount}</div>
+                          <div className="text-[10px] text-muted-foreground">репортов</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

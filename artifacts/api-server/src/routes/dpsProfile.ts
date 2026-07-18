@@ -3,7 +3,7 @@
  */
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { db, telegramUsersTable, friendshipsTable, dpsEventsTable } from "@workspace/db";
-import { eq, or, and, count, sql } from "drizzle-orm";
+import { eq, or, and, count, sql, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { verifyTelegramInitData, type TelegramUser } from "../lib/telegramAuth";
 
@@ -354,6 +354,32 @@ router.get("/friends/locations", requireTgUser, async (req, res) => {
     );
 
   return res.json(locations);
+});
+
+// ── GET /leaderboard — топ-20 пользователей по числу репортов ────────────────
+router.get("/leaderboard", async (_req, res) => {
+  try {
+    const rows = await db
+      .select({
+        firstName:   telegramUsersTable.firstName,
+        username:    telegramUsersTable.username,
+        reportCount: count(dpsEventsTable.id),
+      })
+      .from(telegramUsersTable)
+      .leftJoin(dpsEventsTable, eq(dpsEventsTable.chatId, telegramUsersTable.telegramId))
+      .groupBy(
+        telegramUsersTable.id,
+        telegramUsersTable.firstName,
+        telegramUsersTable.username,
+      )
+      .orderBy(desc(count(dpsEventsTable.id)))
+      .limit(20);
+
+    return res.json(rows.filter(r => Number(r.reportCount) > 0));
+  } catch (e) {
+    logger.error(e, "leaderboard query failed");
+    return res.status(500).json({ error: "internal" });
+  }
 });
 
 export default router;
