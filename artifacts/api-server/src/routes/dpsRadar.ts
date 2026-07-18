@@ -311,4 +311,32 @@ router.post("/dps-radar/telegram-webhook", async (req, res): Promise<void> => {
   }
 });
 
+// ── OSM камеры (прокси Overpass API, кэш в памяти 24ч) ────────────────────────
+const OSM_BBOX  = '50.15,127.30,50.45,127.75';
+const OSM_QUERY = `[out:json][timeout:20];(node["highway"="speed_camera"](${OSM_BBOX});node["enforcement"="maxspeed"](${OSM_BBOX}););out body;`;
+
+let osmCache: { ts: number; data: unknown } | null = null;
+const OSM_TTL = 24 * 60 * 60 * 1000;
+
+router.get("/osm-cameras", async (_req, res) => {
+  try {
+    if (osmCache && Date.now() - osmCache.ts < OSM_TTL) {
+      return res.json(osmCache.data);
+    }
+    const resp = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `data=${encodeURIComponent(OSM_QUERY)}`,
+      signal: AbortSignal.timeout(25_000),
+    });
+    if (!resp.ok) throw new Error(`Overpass ${resp.status}`);
+    const json = await resp.json();
+    osmCache = { ts: Date.now(), data: json };
+    return res.json(json);
+  } catch (err) {
+    logger.warn({ err }, "OSM cameras proxy failed");
+    return res.status(502).json({ elements: [] });
+  }
+});
+
 export default router;

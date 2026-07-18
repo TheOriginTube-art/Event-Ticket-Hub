@@ -2,10 +2,11 @@ import React from 'react';
 import * as L from 'leaflet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Navigation, Settings, MapPin, X, Plus, Check, Trash2 } from 'lucide-react';
+import { Navigation, Settings, MapPin, X, Check, Trash2, Camera } from 'lucide-react';
 import { useListDpsEvents, useGetDpsStats } from '@workspace/api-client-react';
 import { GeocodeResult, useGeocodeSearch } from '@/lib/nominatim';
 import { fetchOsrmRoute, calculateAvoidanceWaypoints, RouteResult } from '@/lib/osrm';
+import { fetchOsmCameras, OsmCamera } from '@/lib/osmCameras';
 
 function escHtml(str: string): string {
   return str
@@ -45,22 +46,36 @@ function saveCustomMarkers(markers: CustomMarker[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(markers));
 }
 
-// ─── GPS скорость ─────────────────────────────────────────────────────────────
-function useGpsSpeed() {
-  const [speed, setSpeed] = React.useState<number | null>(null);
+// ─── GPS позиция + скорость ───────────────────────────────────────────────────
+interface GpsPos { lat: number; lng: number; speed: number | null }
+
+function useGpsPosition() {
+  const [pos, setPos] = React.useState<GpsPos | null>(null);
   React.useEffect(() => {
     if (!navigator.geolocation) return;
     const id = navigator.geolocation.watchPosition(
-      (pos) => {
-        const s = pos.coords.speed;
-        setSpeed(s != null ? Math.round(s * 3.6) : null);
-      },
+      (p) => setPos({
+        lat:   p.coords.latitude,
+        lng:   p.coords.longitude,
+        speed: p.coords.speed != null ? Math.round(p.coords.speed * 3.6) : null,
+      }),
       () => {},
       { enableHighAccuracy: true },
     );
     return () => navigator.geolocation.clearWatch(id);
   }, []);
-  return speed;
+  return pos;
+}
+
+// ─── Расстояние Haversine (метры) ─────────────────────────────────────────────
+function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R  = 6_371_000;
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+  const a  = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // ─── Настройки (localStorage) ─────────────────────────────────────────────────
@@ -80,6 +95,7 @@ export default function MapPage() {
   const mapContainerRef  = React.useRef<HTMLDivElement>(null);
   const eventsLayerRef   = React.useRef<L.LayerGroup>(new L.LayerGroup());
   const customLayerRef   = React.useRef<L.LayerGroup>(new L.LayerGroup());
+  const osmCameraLayerRef = React.useRef<L.LayerGroup>(new L.LayerGroup());
   const routeLayerRef    = React.useRef<L.GeoJSON | null>(null);
 
   // маршрут
@@ -103,9 +119,24 @@ export default function MapPage() {
   const [newMarkerLabel,  setNewMarkerLabel]  = React.useState('');
   const isAddingRef = React.useRef(false); // чтобы читать текущее значение внутри обработчика
 
-  // GPS
-  const speed      = useGpsSpeed();
-  const isSpeeding = speed != null && speed > settings.speedLimit;
+  // OSM камеры
+  const [osmCameras, setOsmCameras] = React.useState<OsmCamera[]>([]);
+
+  // GPS позиция
+  const gps = useGpsPosition();
+  const speed = gps?.speed ?? null;
+
+  // Ближайшая камера (OSM + репортованные) и предупреждение
+  interface NearestCam { distM: number; limitKmh: number; label: string }
+  const [nearestCam, setNearestCam] = React.useState<NearestCam | null>(null);
+
+  const WARN_DIST  = 500; // оранжевое предупреждение, м
+  const ALERT_DIST = 200; // красная рамка, м
+
+  const isSpeeding = nearestCam != null &&
+    nearestCam.distM <= ALERT_DIST &&
+    speed != null && speed > nearestCam.limitKmh;
+  const isApproaching = nearestCam != null && nearestCam.distM <= WARN_DIST;
 
   const { data: fromResults } = useGeocodeSearch(fromQuery);
   const { data: toResults   } = useGeocodeSearch(toQuery);
@@ -142,6 +173,7 @@ export default function MapPage() {
 
       L.control.zoom({ position: 'bottomright' }).addTo(map);
       eventsLayerRef.current.addTo(map);
+      osmCameraLayerRef.current.addTo(map);
       customLayerRef.current.addTo(map);
 
       // Клик по карте — добавление своей метки
@@ -161,6 +193,56 @@ export default function MapPage() {
 
   // Синхронизируем ref с state для использования внутри замыкания карты
   React.useEffect(() => { isAddingRef.current = isAddingMarker; }, [isAddingMarker]);
+
+  // ── Загрузка OSM камер ─────────────────────────────────────────────────────
+  React.useEffect(() => {
+    fetchOsmCameras().then(cams => setOsmCameras(cams));
+  }, []);
+
+  // ── Отрисовка OSM камер на карте ──────────────────────────────────────────
+  React.useEffect(() => {
+    const layer = osmCameraLayerRef.current;
+    layer.clearLayers();
+    if (!settings.showCameras) return;
+    osmCameras.forEach(cam => {
+      const marker = L.marker([cam.lat, cam.lon], { icon: cameraIcon });
+      const limit  = cam.maxspeed ? `${cam.maxspeed} км/ч` : 'не указан';
+      const name   = cam.name ?? 'Камера фиксации скорости';
+      marker.bindPopup(`
+        <div style="min-width:160px">
+          <div style="font-weight:700;margin-bottom:4px">📷 ${escHtml(name)}</div>
+          <div style="font-size:.8em;color:#94a3b8">Лимит: ${escHtml(limit)}</div>
+          ${cam.direction != null ? `<div style="font-size:.75em;color:#94a3b8">Направление: ${cam.direction}°</div>` : ''}
+          <div style="font-size:.7em;color:#475569;margin-top:4px">Источник: OpenStreetMap</div>
+        </div>
+      `);
+      marker.addTo(layer);
+    });
+  }, [osmCameras, settings.showCameras]);
+
+  // ── Proximity: ближайшая камера ───────────────────────────────────────────
+  React.useEffect(() => {
+    if (!gps) { setNearestCam(null); return; }
+
+    let best: NearestCam | null = null;
+
+    // OSM камеры
+    osmCameras.forEach(cam => {
+      const d = haversineMeters(gps.lat, gps.lng, cam.lat, cam.lon);
+      const limit = cam.maxspeed ? parseInt(cam.maxspeed) : settings.speedLimit;
+      if (!best || d < best.distM)
+        best = { distM: d, limitKmh: isNaN(limit) ? settings.speedLimit : limit, label: cam.name ?? 'Камера' };
+    });
+
+    // Репортованные камеры из базы
+    events?.filter(e => e.type === 'camera').forEach(ev => {
+      const d = haversineMeters(gps.lat, gps.lng, ev.lat, ev.lng);
+      if (!best || d < best.distM)
+        best = { distM: d, limitKmh: settings.speedLimit, label: 'Камера (сообщение)' };
+    });
+
+    setNearestCam(best && (best as NearestCam).distM <= WARN_DIST ? best : null);
+  }, [gps, osmCameras, events, settings.speedLimit]);
 
   // Курсор «прицел» когда добавляем метку
   React.useEffect(() => {
@@ -299,43 +381,59 @@ export default function MapPage() {
       {/* ── Карта ─────────────────────────────────────────────────────── */}
       <div ref={mapContainerRef} className="absolute inset-0 z-0" />
 
-      {/* ── Мигающая красная рамка при превышении скорости ─────────────── */}
-      {isSpeeding && (
-        <div
-          className="absolute inset-0 z-50 pointer-events-none"
-          style={{
-            boxShadow: 'inset 0 0 60px 20px rgba(239,68,68,0.75)',
-            animation: 'speedAlert 0.6s ease-in-out infinite',
-          }}
-        />
-      )}
+      {/* ── Анимации ─────────────────────────────────────────────────────── */}
       <style>{`
-        @keyframes speedAlert {
-          0%,100% { opacity:1 }
-          50%      { opacity:.35 }
-        }
+        @keyframes speedAlert  { 0%,100%{opacity:1} 50%{opacity:.3} }
+        @keyframes camApproach { 0%,100%{opacity:1} 50%{opacity:.6} }
       `}</style>
 
-      {/* ── Скорость (GPS) — правый нижний угол ─────────────────────────── */}
+      {/* Красная рамка — превышение у камеры */}
+      {isSpeeding && (
+        <div className="absolute inset-0 z-50 pointer-events-none"
+          style={{ boxShadow:'inset 0 0 70px 25px rgba(239,68,68,0.8)', animation:'speedAlert 0.5s ease-in-out infinite' }} />
+      )}
+
+      {/* Оранжевая рамка — приближение к камере без превышения */}
+      {isApproaching && !isSpeeding && (
+        <div className="absolute inset-0 z-50 pointer-events-none"
+          style={{ boxShadow:'inset 0 0 50px 15px rgba(251,146,60,0.5)', animation:'camApproach 1.2s ease-in-out infinite' }} />
+      )}
+
+      {/* ── Баннер камеры — появляется при приближении ───────────────────── */}
+      {isApproaching && nearestCam && (
+        <div className="absolute z-40 pointer-events-none left-1/2 -translate-x-1/2"
+          style={{ top: 88 }}>
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-2xl shadow-2xl font-bold text-sm border ${
+            isSpeeding
+              ? 'bg-red-600/95 border-red-400 text-white'
+              : 'bg-orange-500/95 border-orange-300 text-white'
+          }`}>
+            <Camera className="w-4 h-4 shrink-0" />
+            <span>
+              {isSpeeding ? '⚠️ ПРЕВЫШЕНИЕ ' : ''}
+              📷 {Math.round(nearestCam.distM)} м · лимит {nearestCam.limitKmh} км/ч
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Спидометр — правый нижний угол ──────────────────────────────── */}
       {speed != null && (
-        <div
-          className="absolute z-40 pointer-events-none"
-          style={{ bottom: 80, right: 16 }}
-        >
-          <div
-            className={`flex flex-col items-center justify-center rounded-2xl font-black leading-none shadow-xl border-2 ${
-              isSpeeding
-                ? 'bg-red-600 border-red-400 text-white'
+        <div className="absolute z-40 pointer-events-none" style={{ bottom: 80, right: 16 }}>
+          <div className={`flex flex-col items-center justify-center rounded-2xl font-black leading-none shadow-xl border-2 ${
+            isSpeeding
+              ? 'bg-red-600 border-red-400 text-white'
+              : isApproaching
+                ? 'bg-orange-500 border-orange-300 text-white'
                 : 'bg-card/95 border-border text-foreground'
-            }`}
-            style={{ width: 64, height: 64 }}
-          >
+          }`} style={{ width: 64, height: 64 }}>
             <span className="text-2xl">{speed}</span>
             <span className="text-[9px] font-semibold tracking-wide opacity-80 mt-0.5">км/ч</span>
           </div>
-          {isSpeeding && (
-            <div className="text-center text-[9px] text-red-400 font-bold mt-1 drop-shadow">
-              ПРЕВЫШЕНИЕ
+          {/* Лимит под спидометром */}
+          {nearestCam && (
+            <div className={`text-center text-[9px] font-bold mt-1 drop-shadow ${isSpeeding ? 'text-red-400' : 'text-orange-400'}`}>
+              лим. {nearestCam.limitKmh}
             </div>
           )}
         </div>
