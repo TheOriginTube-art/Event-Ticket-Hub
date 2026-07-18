@@ -56,7 +56,7 @@ export async function fetchCamerasInBounds(bounds: MapBounds): Promise<OsmCamera
 
   try {
     const { minLat, maxLat, minLng, maxLng } = bounds;
-    const url = `/api/dps-radar/cameras-in-bounds?minLat=${minLat}&maxLat=${maxLat}&minLng=${minLng}&maxLng=${maxLng}`;
+    const url = `api/dps-radar/cameras-in-bounds?minLat=${minLat}&maxLat=${maxLat}&minLng=${minLng}&maxLng=${maxLng}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`API ${res.status}`);
 
