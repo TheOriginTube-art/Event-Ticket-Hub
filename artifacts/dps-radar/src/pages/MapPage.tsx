@@ -451,6 +451,30 @@ export default function MapPage() {
     return () => clearInterval(t);
   }, [tgInitData]);
 
+  // ── Запросы дружбы: фоновый поллинг каждые 15 сек ────────────────────────
+  React.useEffect(() => {
+    if (!tgInitData) return;
+    const poll = () =>
+      fetch(`${BASE}api/dps-radar/friends`, { headers: { 'x-init-data': tgInitData } })
+        .then(r => r.ok ? r.json() : null)
+        .then((j: { friends: Friend[]; pending: Friend[] } | null) => {
+          if (!j) return;
+          // Показать уведомление если появился новый запрос
+          setPendingFr(prev => {
+            if (j.pending.length > prev.length) {
+              // Новый запрос — вибрация если доступна
+              try { window.navigator.vibrate?.(100); } catch {}
+            }
+            return j.pending;
+          });
+          setFriends(j.friends);
+        })
+        .catch(() => {});
+    poll();
+    const t = setInterval(poll, 15_000);
+    return () => clearInterval(t);
+  }, [tgInitData]);
+
   // ── Друзья на карте ───────────────────────────────────────────────────────
   React.useEffect(() => {
     const layer = friendLocLayerRef.current;
@@ -1191,10 +1215,15 @@ export default function MapPage() {
             {/* Профиль */}
             <button
               onClick={() => setShowProfileSheet(true)}
-              className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border bg-blue-500/10 border-blue-500/30 text-blue-400 active:bg-blue-500/25 transition-colors"
+              className="relative flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border bg-blue-500/10 border-blue-500/30 text-blue-400 active:bg-blue-500/25 transition-colors"
             >
               <User className="w-3.5 h-3.5 shrink-0" />
               <span>Профиль</span>
+              {pendingFr.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                  {pendingFr.length}
+                </span>
+              )}
             </button>
 
             <div className="flex-1" />
