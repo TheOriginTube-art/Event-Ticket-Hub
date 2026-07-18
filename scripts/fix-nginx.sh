@@ -1,52 +1,26 @@
 #!/bin/bash
-set -e
 
-CONF=/etc/nginx/sites-available/dps-radar
+echo "=== /etc/nginx/conf.d/ ==="
+ls -la /etc/nginx/conf.d/ 2>/dev/null || echo "пусто"
 
-echo "=== Пишу конфиг nginx ==="
-mkdir -p /var/www/html/.well-known/acme-challenge
-cat > "$CONF" << 'NGINXEOF'
-server {
-    listen 80;
-    server_name ticketflowru.ru;
+echo "=== sites-enabled ==="
+ls -la /etc/nginx/sites-enabled/ 2>/dev/null || echo "пусто"
 
-    location /.well-known/acme-challenge/ {
-        root /var/www/html;
-    }
+echo "=== include-директивы в nginx.conf ==="
+grep include /etc/nginx/nginx.conf
 
-    location /dps-radar/ {
-        proxy_pass http://localhost:8080/dps-radar/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
+echo "=== Все server_name в конфигах ==="
+grep -rn "server_name" /etc/nginx/ 2>/dev/null
 
-    location /api/dps-radar/ {
-        proxy_pass http://localhost:8080/api/dps-radar/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-NGINXEOF
+echo "=== Все listen в конфигах ==="
+grep -rn "listen 80" /etc/nginx/ 2>/dev/null
 
-ln -sf "$CONF" /etc/nginx/sites-enabled/dps-radar
-nginx -t && systemctl reload nginx
-
-echo "=== Кладу test-файл ==="
+echo "=== Тест: публичный vs localhost ==="
 echo "ok" > /var/www/html/.well-known/acme-challenge/test
 sleep 1
-
-echo "--- Тест через localhost ---"
+echo "localhost:"
 curl -s --max-time 5 -H "Host: ticketflowru.ru" http://localhost/.well-known/acme-challenge/test || echo "FAIL"
-
-echo "--- Тест через публичный домен (ticketflowru.ru) ---"
-curl -s --max-time 10 http://ticketflowru.ru/.well-known/acme-challenge/test || echo "FAIL"
-
-echo "--- Что слушает :80 ---"
-ss -tlnp | grep :80 || echo "никто"
-
-echo "--- sites-enabled ---"
-ls /etc/nginx/sites-enabled/
-
+echo ""
+echo "ticketflowru.ru:"
+curl -s --max-time 5 http://ticketflowru.ru/.well-known/acme-challenge/test || echo "FAIL"
 rm -f /var/www/html/.well-known/acme-challenge/test
-echo "=== Скопируй вывод выше и отправь разработчику ==="
