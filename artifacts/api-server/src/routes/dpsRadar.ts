@@ -495,47 +495,140 @@ router.post("/dps-radar/telegram-webhook", async (req, res): Promise<void> => {
   }
 });
 
-// ── OSM камеры (прокси Overpass API, кэш в памяти 24ч) ────────────────────────
-const OSM_BBOX  = '50.15,127.30,50.45,127.75';
-const OSM_QUERY = `[out:json][timeout:20];(node["highway"="speed_camera"](${OSM_BBOX});node["enforcement"="maxspeed"](${OSM_BBOX}););out body;`;
+// ── Камеры: bbox по городу ────────────────────────────────────────────────────
+const CITY_BBOX: Record<string, { top: number; bottom: number; left: number; right: number }> = {
+  blagoveshchensk: { bottom: 50.15, top: 50.45, left: 127.30, right: 127.75 },
+  khabarovsk:      { bottom: 48.35, top: 48.65, left: 134.85, right: 135.30 },
+};
+const DEFAULT_BBOX = CITY_BBOX.blagoveshchensk;
 
-let osmCache: { ts: number; data: unknown } | null = null;
-const OSM_TTL = 24 * 60 * 60 * 1000;
+function osmQuery(b: typeof DEFAULT_BBOX) {
+  const box = `${b.bottom},${b.left},${b.top},${b.right}`;
+  return `[out:json][timeout:25];(` +
+    `node["highway"="speed_camera"](${box});` +
+    `node["enforcement"="maxspeed"](${box});` +
+    `node["man_made"="surveillance"]["surveillance:type"="camera"]["surveillance:zone"="traffic"](${box});` +
+    `node["traffic_sign"~"maxspeed"]["camera"="yes"](${box});` +
+    `);out body;`;
+}
 
-router.get("/dps-radar/osm-cameras", async (_req, res) => {
-  // Постоянные камеры из нашей БД
-  const dbCams = await db.select().from(permanentCamerasTable).orderBy(desc(permanentCamerasTable.createdAt));
-  const dbElements = dbCams.map(c => ({
+const CAMERA_TTL = 6 * 60 * 60 * 1000; // 6ч — Waze меняется чаще
+let osmCache:   { ts: number; city: string; data: unknown } | null = null;
+let wazeCache:  { ts: number; city: string; data: unknown } | null = null;
+
+interface CameraElement { id: number | string; lat: number; lon: number; tags?: Record<string, string>; _source?: string }
+
+// Получаем Waze live-данные (POLICE/CAMERA alerts)
+async function fetchWazeCameras(b: typeof DEFAULT_BBOX, city: string): Promise<CameraElement[]> {
+  if (wazeCache && wazeCache.city === city && Date.now() - wazeCache.ts < CAMERA_TTL) {
+    return (wazeCache.data as CameraElement[]);
+  }
+  const url = `https://www.waze.com/live-map/api/georss` +
+    `?top=${b.top}&bottom=${b.bottom}&left=${b.left}&right=${b.right}&env=row&types=alerts`;
+  const resp = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      "Accept": "application/json",
+      "Referer": "https://www.waze.com/",
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!resp.ok) throw new Error(`Waze ${resp.status}`);
+  const json = await resp.json() as { alerts?: Array<{ type: string; subtype?: string; location: { y: number; x: number }; uuid: string; reportDescription?: string }> };
+  const cameras: CameraElement[] = (json.alerts ?? [])
+    .filter(a => a.type === "POLICE" || a.type === "HAZARD" && a.subtype === "HAZARD_ON_ROAD_CAR_STOPPED")
+    .map(a => ({
+      id: `waze-${a.uuid}`,
+      lat: a.location.y,
+      lon: a.location.x,
+      _source: "waze",
+      tags: { name: a.reportDescription ?? "Камера/пост (Waze)", "maxspeed": "60" },
+    }));
+  wazeCache = { ts: Date.now(), city, data: cameras };
+  return cameras;
+}
+
+router.get("/dps-radar/osm-cameras", async (req, res) => {
+  const city = typeof req.query.city === "string" && CITY_BBOX[req.query.city]
+    ? req.query.city : "blagoveshchensk";
+  const bbox = CITY_BBOX[city];
+
+  // 1. Постоянные камеры из нашей БД
+  const dbCams = await db.select().from(permanentCamerasTable)
+    .where(eq(permanentCamerasTable.city, city))
+    .orderBy(desc(permanentCamerasTable.createdAt));
+  const dbElements: CameraElement[] = dbCams.map(c => ({
     id: c.id,
     lat: c.lat,
     lon: c.lng,
-    _source: "db" as const,
-    tags: { name: c.description, "added_by": c.addedBy, city: c.city },
+    _source: "db",
+    tags: { name: c.description, maxspeed: "60" },
   }));
 
-  // OSM камеры (кэш 24ч)
-  let osmElements: unknown[] = [];
+  // 2. OSM камеры (кэш 6ч)
+  let osmElements: CameraElement[] = [];
   try {
-    if (osmCache && Date.now() - osmCache.ts < OSM_TTL) {
-      osmElements = (osmCache.data as { elements: unknown[] }).elements ?? [];
+    if (osmCache && osmCache.city === city && Date.now() - osmCache.ts < CAMERA_TTL) {
+      osmElements = osmCache.data as CameraElement[];
     } else {
       const resp = await fetch("https://overpass-api.de/api/interpreter", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `data=${encodeURIComponent(OSM_QUERY)}`,
+        body: `data=${encodeURIComponent(osmQuery(bbox))}`,
         signal: AbortSignal.timeout(25_000),
       });
       if (resp.ok) {
-        const json = await resp.json() as { elements: unknown[] };
-        osmCache = { ts: Date.now(), data: json };
+        const json = await resp.json() as { elements: CameraElement[] };
+        osmCache = { ts: Date.now(), city, data: json.elements ?? [] };
         osmElements = json.elements ?? [];
       }
     }
   } catch (err) {
-    logger.warn({ err }, "OSM cameras proxy failed, serving DB cameras only");
+    logger.warn({ err }, "OSM cameras fetch failed");
   }
 
-  return res.json({ elements: [...dbElements, ...osmElements] });
+  // 3. Waze live камеры
+  let wazeElements: CameraElement[] = [];
+  try {
+    wazeElements = await fetchWazeCameras(bbox, city);
+  } catch (err) {
+    logger.warn({ err }, "Waze cameras fetch failed");
+  }
+
+  return res.json({ elements: [...dbElements, ...osmElements, ...wazeElements] });
+});
+
+// ── Добавить камеру с карты (POST) ────────────────────────────────────────────
+router.post("/dps-radar/cameras", async (req, res) => {
+  try {
+    const { lat, lng, description, city } = req.body as {
+      lat: number; lng: number; description?: string; city?: string;
+    };
+    if (!lat || !lng) return res.status(400).json({ error: "lat/lng required" });
+    const [row] = await db.insert(permanentCamerasTable).values({
+      lat,
+      lng,
+      description: description?.slice(0, 100) || "Камера фиксации скорости",
+      city: city || "blagoveshchensk",
+      addedBy: "map",
+    }).returning();
+    return res.json(row);
+  } catch (err) {
+    logger.error({ err }, "Failed to add camera");
+    return res.status(500).json({ error: "Internal error" });
+  }
+});
+
+// ── Удалить камеру из БД ──────────────────────────────────────────────────────
+router.delete("/dps-radar/cameras/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.delete(permanentCamerasTable).where(eq(permanentCamerasTable.id, id));
+    return res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "Failed to delete camera");
+    return res.status(500).json({ error: "Internal error" });
+  }
 });
 
 export default router;

@@ -144,7 +144,7 @@ export default function MapPage() {
   const [isAddingMarker,  setIsAddingMarker]  = React.useState(false);
   const [pendingCoords,   setPendingCoords]   = React.useState<{lat:number;lng:number}|null>(null);
   const [newMarkerLabel,  setNewMarkerLabel]  = React.useState('');
-  const isAddingRef = React.useRef(false); // чтобы читать текущее значение внутри обработчика
+  const isAddingRef = React.useRef(false);
 
   // OSM камеры
   const [osmCameras, setOsmCameras] = React.useState<OsmCamera[]>([]);
@@ -218,7 +218,7 @@ export default function MapPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Синхронизируем ref с state для использования внутри замыкания карты
+  // Синхронизируем ref с state
   React.useEffect(() => { isAddingRef.current = isAddingMarker; }, [isAddingMarker]);
 
   // ── Навигация: следим за GPS и ведём карту за пользователем ───────────────
@@ -263,7 +263,7 @@ export default function MapPage() {
 
   // ── Загрузка OSM камер ─────────────────────────────────────────────────────
   React.useEffect(() => {
-    fetchOsmCameras().then(cams => setOsmCameras(cams));
+    fetchOsmCameras(citySlug).then(cams => setOsmCameras(cams));
   }, []);
 
   // ── Отрисовка OSM камер на карте ──────────────────────────────────────────
@@ -698,6 +698,7 @@ export default function MapPage() {
           <button
             onClick={() => {
               if (isAddingMarker) { setIsAddingMarker(false); return; }
+              setIsAddingMarker(false);
               setPendingCoords(null);
               setIsAddingMarker(true);
             }}
@@ -709,7 +710,7 @@ export default function MapPage() {
             }`}
           >
             <MapPin className="w-3.5 h-3.5" />
-            {isAddingMarker ? 'Нажмите на карту' : 'Метка'}
+            {isAddingMarker ? 'Нажмите' : 'Метка'}
           </button>
 
           {/* Кнопка настроек */}
