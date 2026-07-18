@@ -133,9 +133,12 @@ export default function MapPage() {
       mapRef.current = map;
 
       L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+        attribution: '',
         subdomains: 'abcd', maxZoom: 20,
       }).addTo(map);
+
+      // Скрываем атрибуцию Leaflet полностью
+      map.attributionControl.remove();
 
       L.control.zoom({ position: 'bottomright' }).addTo(map);
       eventsLayerRef.current.addTo(map);
