@@ -407,7 +407,21 @@ export default function MapPage() {
     }
   }, [routeResult]);
 
-  const handleCalculateRoute = async () => {
+  // Сбросить маршрут полностью
+  const clearRoute = React.useCallback(() => {
+    setRouteResult(null);
+    setFromPoint(null);
+    setToPoint(null);
+    setFromQuery('');
+    setToQuery('');
+    setIsNavigating(false);
+    if (routeLayerRef.current && mapRef.current) {
+      mapRef.current.removeLayer(routeLayerRef.current);
+      routeLayerRef.current = null;
+    }
+  }, []);
+
+  const handleCalculateRoute = React.useCallback(async () => {
     if (!fromPoint || !toPoint) return;
     setIsRouting(true);
     setRouteResult(null);
@@ -416,7 +430,6 @@ export default function MapPage() {
     try {
       const baseRoute = await fetchOsrmRoute([start, end]);
       if (baseRoute && events) {
-        // Избегаем посты ДПС (не камеры)
         const dpsPosts = events.filter(e => e.type === 'dps_post').map(e => ({ lat: e.lat, lng: e.lng }));
         const waypoints = calculateAvoidanceWaypoints(baseRoute.geometry.coordinates as [number,number][], dpsPosts);
         if (waypoints.length > 0) {
@@ -427,7 +440,12 @@ export default function MapPage() {
       setRouteResult(baseRoute);
     } catch (e) { console.error(e); }
     finally { setIsRouting(false); }
-  };
+  }, [fromPoint, toPoint, events]);
+
+  // Авто-расчёт при выборе обоих точек
+  React.useEffect(() => {
+    if (fromPoint && toPoint) void handleCalculateRoute();
+  }, [fromPoint, toPoint]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const confirmAddMarker = () => {
     if (!pendingCoords || !newMarkerLabel.trim()) return;
@@ -545,7 +563,7 @@ export default function MapPage() {
 
       {/* ── Кнопка маршрута — сверху по центру ───────────────────────────── */}
       {!isNavigating && (
-        <div className="absolute z-20 top-3 left-1/2 -translate-x-1/2 pointer-events-auto">
+        <div className="absolute z-20 top-3 left-1/2 -translate-x-1/2 pointer-events-auto flex items-center gap-2">
           <button
             onClick={() => setShowRouteSearch(true)}
             className={`flex items-center gap-2 px-4 py-2 rounded-2xl shadow-xl border text-sm font-semibold transition-colors ${
@@ -555,8 +573,26 @@ export default function MapPage() {
             }`}
           >
             <Navigation className="w-4 h-4" />
-            {routeResult ? `${fmt.dist(routeResult.distance)} · ${fmt.time(routeResult.duration)}` : 'Маршрут'}
+            {isRouting ? 'Строим...' : routeResult ? `${fmt.dist(routeResult.distance)} · ${fmt.time(routeResult.duration)}` : 'Маршрут'}
           </button>
+          {/* Красная кнопка «Поехали!» + «Отменить» когда маршрут готов */}
+          {routeResult && (
+            <>
+              <button
+                onClick={() => { setIsNavigating(true); setShowRouteSearch(false); }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-2xl shadow-xl border bg-emerald-500 border-emerald-400 text-white text-sm font-bold"
+              >
+                <Play className="w-3.5 h-3.5 fill-white" /> Поехали!
+              </button>
+              <button
+                onClick={clearRoute}
+                className="flex items-center justify-center w-9 h-9 rounded-2xl shadow-xl border bg-red-600/90 border-red-500 text-white"
+                title="Отменить маршрут"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -601,58 +637,77 @@ export default function MapPage() {
               )}
             </div>
 
-            {/* До */}
+            {/* До — поле или компактный чип когда выбрано */}
             <div className="relative mb-4">
-              <div className="flex items-center bg-input/50 rounded-xl border border-border focus-within:border-ring px-3 py-2.5">
-                <div className="w-3 h-3 rounded-full bg-emerald-500 mr-3 shrink-0" />
-                <input
-                  type="text"
-                  placeholder="Куда..."
-                  className="bg-transparent border-none outline-none flex-1 text-sm text-foreground placeholder:text-muted-foreground"
-                  value={toPoint ? toPoint.display_name : toQuery}
-                  onChange={e => { setToQuery(e.target.value); setToPoint(null); setIsSearchingTo(true); }}
-                  onFocus={() => setIsSearchingTo(true)}
-                  onBlur={() => setTimeout(() => setIsSearchingTo(false), 200)}
-                />
-              </div>
-              {isSearchingTo && toResults && toResults.length > 0 && (
-                <div className="absolute bottom-full left-0 w-full mb-1 bg-popover border border-border rounded-xl shadow-lg overflow-hidden z-50">
-                  {toResults.map((r, i) => (
-                    <div key={i} className="p-2.5 text-sm hover:bg-accent cursor-pointer truncate border-b border-border/50 last:border-0"
-                      onClick={() => { setToPoint(r); setToQuery(''); setIsSearchingTo(false); }}>
-                      {r.display_name}
-                    </div>
-                  ))}
+              {toPoint ? (
+                <div className="flex items-center bg-emerald-500/10 rounded-xl border border-emerald-500/40 px-3 py-2.5 gap-3">
+                  <div className="w-3 h-3 rounded-full bg-emerald-500 shrink-0" />
+                  <span className="flex-1 text-sm text-emerald-300 truncate">{toPoint.display_name.split(',')[0]}</span>
+                  <button
+                    onClick={() => { setToPoint(null); setToQuery(''); }}
+                    className="shrink-0 text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
+              ) : (
+                <>
+                  <div className="flex items-center bg-input/50 rounded-xl border border-border focus-within:border-ring px-3 py-2.5">
+                    <div className="w-3 h-3 rounded-full bg-emerald-500 mr-3 shrink-0" />
+                    <input
+                      type="text"
+                      placeholder="Куда..."
+                      autoFocus
+                      className="bg-transparent border-none outline-none flex-1 text-sm text-foreground placeholder:text-muted-foreground"
+                      value={toQuery}
+                      onChange={e => { setToQuery(e.target.value); setIsSearchingTo(true); }}
+                      onFocus={() => setIsSearchingTo(true)}
+                      onBlur={() => setTimeout(() => setIsSearchingTo(false), 200)}
+                    />
+                  </div>
+                  {isSearchingTo && toResults && toResults.length > 0 && (
+                    <div className="absolute bottom-full left-0 w-full mb-1 bg-popover border border-border rounded-xl shadow-lg overflow-hidden z-50">
+                      {toResults.map((r, i) => (
+                        <div key={i} className="p-2.5 text-sm hover:bg-accent cursor-pointer truncate border-b border-border/50 last:border-0"
+                          onClick={() => {
+                            setToPoint(r); setToQuery(''); setIsSearchingTo(false);
+                            // Авто-подставить GPS как «Откуда» если не выбрано
+                            if (!fromPoint && gps) {
+                              setFromPoint({ lat: String(gps.lat), lon: String(gps.lng), display_name: 'Моё местоположение' });
+                            }
+                          }}>
+                          {r.display_name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
-            <Button
-              disabled={!fromPoint || !toPoint || isRouting}
-              onClick={() => { void handleCalculateRoute(); setShowRouteSearch(false); }}
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold h-11"
-            >
-              <Navigation className="w-4 h-4 mr-2" />
-              {isRouting ? 'Построение...' : 'Маршрут (минуя посты)'}
-            </Button>
-
-            {/* Результат маршрута прямо в sheet */}
-            {routeResult && (
-              <div className="mt-3 flex items-center gap-3 bg-white/5 rounded-2xl px-4 py-3">
-                <div className="flex gap-5 flex-1">
-                  <div>
-                    <div className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">В пути</div>
-                    <div className="font-bold text-base text-emerald-400">{fmt.time(routeResult.duration)}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">Расстояние</div>
-                    <div className="font-bold text-base text-foreground">{fmt.dist(routeResult.distance)}</div>
-                  </div>
-                </div>
-                <Button onClick={() => { setIsNavigating(true); setShowRouteSearch(false); }}
-                  className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-4 gap-2">
-                  <Play className="w-4 h-4 fill-white" /> Поехали!
-                </Button>
+            {/* Результат / Поехали — появляется сразу после расчёта */}
+            {(isRouting || routeResult) && (
+              <div className="flex items-center gap-3 bg-white/5 rounded-2xl px-4 py-3">
+                {isRouting ? (
+                  <span className="flex-1 text-sm text-muted-foreground">Строим маршрут...</span>
+                ) : routeResult ? (
+                  <>
+                    <div className="flex gap-5 flex-1">
+                      <div>
+                        <div className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">В пути</div>
+                        <div className="font-bold text-base text-emerald-400">{fmt.time(routeResult.duration)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">Расстояние</div>
+                        <div className="font-bold text-base text-foreground">{fmt.dist(routeResult.distance)}</div>
+                      </div>
+                    </div>
+                    <Button onClick={() => { setIsNavigating(true); setShowRouteSearch(false); }}
+                      className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-4 gap-2 shrink-0">
+                      <Play className="w-4 h-4 fill-white" /> Поехали!
+                    </Button>
+                  </>
+                ) : null}
               </div>
             )}
           </div>
