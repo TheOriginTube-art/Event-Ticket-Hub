@@ -2,7 +2,7 @@ import React from 'react';
 import * as L from 'leaflet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Navigation, Settings, MapPin, X, Check, Trash2, Camera, Play, Square, AlertTriangle, Send, User, Users, LocateFixed, Trophy, MessageCircle, ChevronLeft, Smile } from 'lucide-react';
+import { Navigation, Settings, MapPin, X, Check, Trash2, Camera, Play, Square, AlertTriangle, Send, User, Users, LocateFixed, Trophy, MessageCircle, ChevronLeft, Smile, Shield } from 'lucide-react';
 import { useListDpsEvents, useGetDpsStats } from '@workspace/api-client-react';
 import { GeocodeResult, useGeocodeSearch } from '@/lib/nominatim';
 import { fetchOsrmRoute, calculateAvoidanceWaypoints, RouteResult } from '@/lib/osrm';
@@ -171,7 +171,7 @@ export default function MapPage() {
   const [osmCameras, setOsmCameras] = React.useState<OsmCamera[]>([]);
 
   // Профиль и друзья
-  type TgProfile = { telegramId: number; firstName: string; lastName?: string | null; username?: string | null; photoUrl?: string | null; shareLocation: boolean; reportCount: number; friendCount: number }
+  type TgProfile = { telegramId: number; firstName: string; lastName?: string | null; username?: string | null; photoUrl?: string | null; shareLocation: boolean; isAdmin: boolean; reportCount: number; friendCount: number }
   type Friend    = { telegramId: number; firstName: string; lastName?: string | null; username?: string | null; friendshipId: number }
   type FriendLoc = { telegramId: number; firstName: string; lastLat: number; lastLng: number; lastLocAt: string }
 
@@ -194,6 +194,15 @@ export default function MapPage() {
   const [showLeaderboard, setShowLeaderboard] = React.useState(false);
   const [leaderboard,     setLeaderboard]     = React.useState<LeaderEntry[]>([]);
   const [lbLoading,       setLbLoading]       = React.useState(false);
+
+  // Админка
+  type AdminUser  = { telegramId: number; username: string | null; firstName: string; lastName: string | null; isAdmin: boolean; createdAt: string }
+  type AdminStats = { totalUsers: number; totalEvents: number }
+  const [showAdmin,   setShowAdmin]   = React.useState(false);
+  const [adminStats,  setAdminStats]  = React.useState<AdminStats | null>(null);
+  const [adminUsers,  setAdminUsers]  = React.useState<AdminUser[]>([]);
+  const [adminSearch, setAdminSearch] = React.useState('');
+  const [adminLoading,setAdminLoading]= React.useState(false);
 
   // Звуковой сигнал — ключ уже-сработавшей камеры (чтобы не бипать непрерывно)
   const alertedCamKeyRef = React.useRef<string | null>(null);
@@ -836,6 +845,40 @@ export default function MapPage() {
   // Загрузить превью при открытии чата
   React.useEffect(() => { if (showChats) void loadChatPreviews(); }, [showChats, loadChatPreviews]);
 
+  // ── Admin functions ───────────────────────────────────────────────────────────
+  const loadAdminPanel = React.useCallback(async () => {
+    if (!tgInitData) return;
+    setAdminLoading(true);
+    const headers = { 'x-init-data': tgInitData };
+    const [statsRes, usersRes] = await Promise.all([
+      fetch(`${BASE}api/dps-radar/admin/stats`,         { headers }).catch(() => null),
+      fetch(`${BASE}api/dps-radar/admin/users?limit=50`, { headers }).catch(() => null),
+    ]);
+    if (statsRes?.ok) setAdminStats(await statsRes.json() as AdminStats);
+    if (usersRes?.ok) setAdminUsers(await usersRes.json() as AdminUser[]);
+    setAdminLoading(false);
+  }, [BASE, tgInitData]);
+
+  const searchAdminUsers = React.useCallback(async (q: string) => {
+    if (!tgInitData) return;
+    const r = await fetch(`${BASE}api/dps-radar/admin/users?q=${encodeURIComponent(q)}&limit=50`, {
+      headers: { 'x-init-data': tgInitData },
+    }).catch(() => null);
+    if (r?.ok) setAdminUsers(await r.json() as AdminUser[]);
+  }, [BASE, tgInitData]);
+
+  const toggleAdmin = async (userId: number, current: boolean) => {
+    if (!tgInitData) return;
+    await fetch(`${BASE}api/dps-radar/admin/users/${userId}/set-admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-init-data': tgInitData },
+      body: JSON.stringify({ isAdmin: !current }),
+    });
+    setAdminUsers(prev => prev.map(u => u.telegramId === userId ? { ...u, isAdmin: !current } : u));
+  };
+
+  React.useEffect(() => { if (showAdmin) void loadAdminPanel(); }, [showAdmin, loadAdminPanel]);
+
   const submitReport = async () => {
     if (!gps) { setReportError('Включите геолокацию для отправки сообщений'); return; }
     if (!reportAddress.trim()) { setReportError('Укажите адрес'); return; }
@@ -1317,104 +1360,85 @@ export default function MapPage() {
       >
         <div className="pointer-events-auto mb-3 bg-card/95 backdrop-blur-md border border-border shadow-xl rounded-2xl overflow-hidden">
 
-          {/* Строка 1: статистика ─────────────────────────────────────── */}
-          <div className="flex items-center gap-3 px-4 py-2 border-b border-border/30 text-xs font-medium">
+          {/* Статистика (одна строка, без камер) ─────────────────────── */}
+          <div className="flex items-center gap-3 px-4 py-1.5 border-b border-border/20 text-xs font-medium">
             {settings.showPosts && (
-              <span className="flex items-center gap-1.5 text-amber-400 whitespace-nowrap">
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span className="flex items-center gap-1 text-amber-400 whitespace-nowrap">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
                 ДПС: {stats?.dpsPostCount ?? 0}
               </span>
             )}
-            {settings.showCameras && (
-              <span className="flex items-center gap-1.5 text-cyan-400 whitespace-nowrap">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
-                Камеры: {stats?.cameraCount ?? 0}
-              </span>
-            )}
             {settings.showAccidents && (
-              <span className="flex items-center gap-1.5 text-destructive whitespace-nowrap">
-                <span className="w-2 h-2 rounded-full bg-destructive animate-pulse shrink-0" />
+              <span className="flex items-center gap-1 text-destructive whitespace-nowrap">
+                <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse shrink-0" />
                 ДТП: {stats?.accidentCount ?? 0}
               </span>
             )}
-            {!settings.showPosts && !settings.showCameras && !settings.showAccidents && (
-              <span className="text-muted-foreground">Все слои скрыты</span>
-            )}
           </div>
 
-          {/* Строка 2: действия ──────────────────────────────────────── */}
-          <div className="flex items-center gap-2 px-3 py-2">
+          {/* Кнопки — иконки, одна строка, всегда влезают ──────────────── */}
+          <div className="flex items-center justify-around px-2 py-1.5 gap-1">
             {/* Сообщить */}
-            <button
-              onClick={() => { setShowReportDialog(true); setReportStatus('idle'); setReportError(''); }}
-              className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border bg-amber-500/10 border-amber-500/30 text-amber-400 active:bg-amber-500/25 transition-colors"
-            >
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              <span>Сообщить</span>
+            <button onClick={() => { setShowReportDialog(true); setReportStatus('idle'); setReportError(''); }}
+              className="flex flex-col items-center gap-0.5 flex-1 py-1 rounded-xl active:bg-amber-500/20 transition-colors" title="Сообщить">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+              <span className="text-[9px] text-amber-400/70">Сообщить</span>
             </button>
 
             {/* Профиль */}
-            <button
-              onClick={() => setShowProfileSheet(true)}
-              className="relative flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border bg-blue-500/10 border-blue-500/30 text-blue-400 active:bg-blue-500/25 transition-colors"
-            >
-              <Users className="w-3.5 h-3.5 shrink-0" />
-              <span>Профиль</span>
+            <button onClick={() => setShowProfileSheet(true)}
+              className="relative flex flex-col items-center gap-0.5 flex-1 py-1 rounded-xl active:bg-blue-500/20 transition-colors" title="Профиль">
+              <Users className="w-5 h-5 text-blue-400" />
+              <span className="text-[9px] text-blue-400/70">Профиль</span>
               {pendingCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 shadow-md leading-none">
+                <span className="absolute top-0 right-2 min-w-[16px] h-4 flex items-center justify-center bg-red-500 text-white text-[9px] font-bold rounded-full px-1 leading-none">
                   {pendingCount > 9 ? '9+' : pendingCount}
                 </span>
               )}
             </button>
 
             {/* Чат */}
-            <button
-              onClick={() => { setShowChats(true); setChatFriend(null); }}
-              className="relative flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border bg-emerald-500/10 border-emerald-500/30 text-emerald-400 active:bg-emerald-500/25 transition-colors"
-            >
-              <MessageCircle className="w-3.5 h-3.5 shrink-0" />
-              <span>Чат</span>
+            <button onClick={() => { setShowChats(true); setChatFriend(null); }}
+              className="relative flex flex-col items-center gap-0.5 flex-1 py-1 rounded-xl active:bg-emerald-500/20 transition-colors" title="Чат">
+              <MessageCircle className="w-5 h-5 text-emerald-400" />
+              <span className="text-[9px] text-emerald-400/70">Чат</span>
               {totalUnread > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 shadow-md leading-none">
+                <span className="absolute top-0 right-2 min-w-[16px] h-4 flex items-center justify-center bg-red-500 text-white text-[9px] font-bold rounded-full px-1 leading-none">
                   {totalUnread > 9 ? '9+' : totalUnread}
                 </span>
               )}
             </button>
 
-            <div className="flex-1" />
-
             {/* Метка */}
             <button
-              onClick={() => {
-                if (isAddingMarker) { setIsAddingMarker(false); return; }
-                setPendingCoords(null);
-                setIsAddingMarker(true);
-              }}
-              className={`flex items-center justify-center w-9 h-9 rounded-xl border transition-colors shrink-0 ${
-                isAddingMarker
-                  ? 'bg-purple-600 border-purple-500 text-white'
-                  : 'bg-white/5 border-white/10 text-purple-400 active:bg-white/10'
-              }`}
-              title={isAddingMarker ? 'Нажмите на карту' : 'Добавить метку'}
-            >
-              <MapPin className="w-4 h-4 shrink-0" />
+              onClick={() => { if (isAddingMarker) { setIsAddingMarker(false); return; } setPendingCoords(null); setIsAddingMarker(true); }}
+              className={`flex flex-col items-center gap-0.5 flex-1 py-1 rounded-xl transition-colors ${isAddingMarker ? 'bg-purple-600/30' : 'active:bg-white/10'}`}>
+              <MapPin className={`w-5 h-5 ${isAddingMarker ? 'text-purple-300' : 'text-purple-400'}`} />
+              <span className="text-[9px] text-purple-400/70">Метка</span>
             </button>
 
             {/* Рейтинг */}
-            <button
-              onClick={() => setShowLeaderboard(true)}
-              className="flex items-center justify-center w-9 h-9 rounded-xl bg-yellow-500/10 border border-yellow-500/30 active:bg-yellow-500/20 transition-colors shrink-0"
-            >
-              <Trophy className="w-4 h-4 text-yellow-400" />
+            <button onClick={() => setShowLeaderboard(true)}
+              className="flex flex-col items-center gap-0.5 flex-1 py-1 rounded-xl active:bg-yellow-500/20 transition-colors">
+              <Trophy className="w-5 h-5 text-yellow-400" />
+              <span className="text-[9px] text-yellow-400/70">Рейтинг</span>
             </button>
 
             {/* Настройки */}
-            <button
-              onClick={() => setShowSettings(true)}
-              className="flex items-center justify-center w-9 h-9 rounded-xl bg-white/5 border border-white/10 active:bg-white/10 transition-colors shrink-0"
-            >
-              <Settings className="w-4 h-4 text-muted-foreground" />
+            <button onClick={() => setShowSettings(true)}
+              className="flex flex-col items-center gap-0.5 flex-1 py-1 rounded-xl active:bg-white/10 transition-colors">
+              <Settings className="w-5 h-5 text-muted-foreground" />
+              <span className="text-[9px] text-muted-foreground/70">Ещё</span>
             </button>
+
+            {/* Админ (только для админов) */}
+            {tgProfile?.isAdmin && (
+              <button onClick={() => setShowAdmin(true)}
+                className="flex flex-col items-center gap-0.5 flex-1 py-1 rounded-xl active:bg-red-500/20 transition-colors">
+                <Shield className="w-5 h-5 text-red-400" />
+                <span className="text-[9px] text-red-400/70">Админ</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1829,6 +1853,87 @@ export default function MapPage() {
             >
               <Send className="w-4 h-4" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Админ-панель (bottom sheet) ───────────────────────────────── */}
+      {showAdmin && (
+        <div className="absolute inset-0 z-50 flex items-end" onClick={() => setShowAdmin(false)}>
+          <div
+            className="w-full bg-card border-t border-border rounded-t-3xl shadow-2xl"
+            style={{ maxHeight: '88dvh', display: 'flex', flexDirection: 'column', paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Шапка */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
+              <div className="flex items-center gap-2 font-bold text-base">
+                <Shield className="w-5 h-5 text-red-400" /> Админ-панель
+              </div>
+              <button onClick={() => setShowAdmin(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {adminLoading ? (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">Загрузка…</div>
+            ) : (
+              <div className="overflow-y-auto flex-1 px-4 space-y-5">
+                {/* Статистика */}
+                {adminStats && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-muted/30 rounded-2xl p-4 text-center">
+                      <div className="text-2xl font-black text-blue-400">{adminStats.totalUsers}</div>
+                      <div className="text-xs text-muted-foreground mt-1">Пользователей</div>
+                    </div>
+                    <div className="bg-muted/30 rounded-2xl p-4 text-center">
+                      <div className="text-2xl font-black text-amber-400">{adminStats.totalEvents}</div>
+                      <div className="text-xs text-muted-foreground mt-1">Репортов</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Поиск пользователей */}
+                <div>
+                  <div className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                    <User className="w-4 h-4 text-muted-foreground" /> Пользователи
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Поиск по имени или @username"
+                    className="w-full bg-input/60 border border-border rounded-xl px-3 py-2 text-sm outline-none focus:border-ring mb-3 text-foreground placeholder:text-muted-foreground"
+                    value={adminSearch}
+                    onChange={e => { setAdminSearch(e.target.value); void searchAdminUsers(e.target.value); }}
+                  />
+                  <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                    {adminUsers.map(u => (
+                      <div key={u.telegramId} className="flex items-center gap-3 bg-muted/20 rounded-xl px-3 py-2.5">
+                        <div className="w-9 h-9 rounded-full bg-blue-500/20 flex items-center justify-center text-sm font-bold text-blue-400 shrink-0">
+                          {(u.firstName?.[0] ?? '?').toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">
+                            {u.firstName}{u.lastName ? ` ${u.lastName}` : ''}
+                            {u.isAdmin && <span className="ml-1.5 text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded-full">admin</span>}
+                          </div>
+                          {u.username && <div className="text-xs text-muted-foreground">@{u.username}</div>}
+                        </div>
+                        <button
+                          onClick={() => void toggleAdmin(u.telegramId, u.isAdmin)}
+                          className={`text-xs px-2.5 py-1.5 rounded-lg font-semibold border transition-colors shrink-0 ${
+                            u.isAdmin
+                              ? 'bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30'
+                              : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted/60'
+                          }`}
+                        >
+                          {u.isAdmin ? '−admin' : '+admin'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

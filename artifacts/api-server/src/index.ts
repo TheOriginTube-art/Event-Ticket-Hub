@@ -32,6 +32,8 @@ try {
       read_at    TIMESTAMPTZ
     )
   `);
+  await pool.query(`ALTER TABLE telegram_users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false`);
+  await pool.query(`UPDATE telegram_users SET is_admin = true WHERE lower(username) = 'etxarriz'`);
   logger.info("Migrations OK");
 } catch (err) {
   logger.warn({ err }, "Migration warning (non-fatal)");
