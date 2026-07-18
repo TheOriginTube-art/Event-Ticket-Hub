@@ -2,8 +2,8 @@
  * Profile, friends, and real-time location sharing for DPS Radar Telegram Mini App.
  */
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { db, telegramUsersTable, friendshipsTable, dpsEventsTable } from "@workspace/db";
-import { eq, or, and, count, sql, desc } from "drizzle-orm";
+import { db, telegramUsersTable, friendshipsTable, dpsEventsTable, dpsDirectMessagesTable } from "@workspace/db";
+import { eq, or, and, count, sql, desc, isNull } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { verifyTelegramInitData, type TelegramUser } from "../lib/telegramAuth";
 
@@ -356,6 +356,161 @@ router.get("/friends/locations", requireTgUser, async (req, res) => {
   return res.json(locations);
 });
 
+// ── Helpers: check accepted friendship ───────────────────────────────────────
+async function areFriends(aId: number, bId: number): Promise<boolean> {
+  const [fs] = await db
+    .select()
+    .from(friendshipsTable)
+    .where(
+      and(
+        eq(friendshipsTable.status, "accepted"),
+        or(
+          and(eq(friendshipsTable.userId, aId),   eq(friendshipsTable.friendId, bId)),
+          and(eq(friendshipsTable.userId, bId),   eq(friendshipsTable.friendId, aId)),
+        ),
+      ),
+    )
+    .limit(1);
+  return Boolean(fs);
+}
+
+// ── GET /dps-radar/chats — список диалогов ───────────────────────────────────
+router.get("/dps-radar/chats", requireTgUser, async (req, res) => {
+  const u = getTgUser(req);
+
+  // Друзья
+  const acceptedFriendships = await db
+    .select({ fs: friendshipsTable, them: telegramUsersTable })
+    .from(friendshipsTable)
+    .innerJoin(
+      telegramUsersTable,
+      or(
+        and(eq(friendshipsTable.userId,   u.id), eq(telegramUsersTable.telegramId, friendshipsTable.friendId)),
+        and(eq(friendshipsTable.friendId, u.id), eq(telegramUsersTable.telegramId, friendshipsTable.userId)),
+      ),
+    )
+    .where(eq(friendshipsTable.status, "accepted"));
+
+  const conversations = await Promise.all(
+    acceptedFriendships.map(async ({ fs, them }) => {
+      const friendId = them.telegramId;
+
+      const [lastMsg] = await db
+        .select()
+        .from(dpsDirectMessagesTable)
+        .where(
+          or(
+            and(eq(dpsDirectMessagesTable.fromId, u.id),   eq(dpsDirectMessagesTable.toId, friendId)),
+            and(eq(dpsDirectMessagesTable.fromId, friendId), eq(dpsDirectMessagesTable.toId, u.id)),
+          ),
+        )
+        .orderBy(desc(dpsDirectMessagesTable.createdAt))
+        .limit(1);
+
+      const [{ unread }] = await db
+        .select({ unread: count() })
+        .from(dpsDirectMessagesTable)
+        .where(
+          and(
+            eq(dpsDirectMessagesTable.fromId, friendId),
+            eq(dpsDirectMessagesTable.toId,   u.id),
+            isNull(dpsDirectMessagesTable.readAt),
+          ),
+        );
+
+      return {
+        friend: { ...them, friendshipId: fs.id },
+        lastMessage: lastMsg ?? null,
+        unread:      Number(unread),
+      };
+    }),
+  );
+
+  // Сортируем: сначала с сообщениями (по дате последнего), потом без
+  conversations.sort((a, b) => {
+    if (!a.lastMessage && !b.lastMessage) return 0;
+    if (!a.lastMessage) return 1;
+    if (!b.lastMessage) return -1;
+    return new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime();
+  });
+
+  return res.json(conversations);
+});
+
+// ── GET /dps-radar/chats/unread — счётчик непрочитанных ──────────────────────
+router.get("/dps-radar/chats/unread", requireTgUser, async (req, res) => {
+  const u = getTgUser(req);
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(dpsDirectMessagesTable)
+    .where(
+      and(
+        eq(dpsDirectMessagesTable.toId, u.id),
+        isNull(dpsDirectMessagesTable.readAt),
+      ),
+    );
+  return res.json({ total: Number(total) });
+});
+
+// ── GET /dps-radar/chats/:friendId — история сообщений ───────────────────────
+router.get("/dps-radar/chats/:friendId", requireTgUser, async (req, res) => {
+  const u = getTgUser(req);
+  const friendId = parseInt(String(req.params.friendId));
+  if (isNaN(friendId)) return res.status(400).json({ error: "invalid friendId" });
+
+  if (!(await areFriends(u.id, friendId))) {
+    return res.status(403).json({ error: "not friends" });
+  }
+
+  // Отмечаем их сообщения мне как прочитанные
+  await db
+    .update(dpsDirectMessagesTable)
+    .set({ readAt: new Date() })
+    .where(
+      and(
+        eq(dpsDirectMessagesTable.fromId, friendId),
+        eq(dpsDirectMessagesTable.toId,   u.id),
+        isNull(dpsDirectMessagesTable.readAt),
+      ),
+    );
+
+  const messages = await db
+    .select()
+    .from(dpsDirectMessagesTable)
+    .where(
+      or(
+        and(eq(dpsDirectMessagesTable.fromId, u.id),   eq(dpsDirectMessagesTable.toId, friendId)),
+        and(eq(dpsDirectMessagesTable.fromId, friendId), eq(dpsDirectMessagesTable.toId, u.id)),
+      ),
+    )
+    .orderBy(dpsDirectMessagesTable.createdAt)
+    .limit(100);
+
+  return res.json(messages);
+});
+
+// ── POST /dps-radar/chats/:friendId — отправить сообщение ────────────────────
+router.post("/dps-radar/chats/:friendId", requireTgUser, async (req, res) => {
+  const u = getTgUser(req);
+  const friendId = parseInt(String(req.params.friendId));
+  if (isNaN(friendId)) return res.status(400).json({ error: "invalid friendId" });
+
+  const { content } = req.body as { content?: string };
+  if (!content?.trim()) return res.status(400).json({ error: "content required" });
+  if (content.length > 1000) return res.status(400).json({ error: "too long" });
+
+  if (!(await areFriends(u.id, friendId))) {
+    return res.status(403).json({ error: "not friends" });
+  }
+
+  const [msg] = await db
+    .insert(dpsDirectMessagesTable)
+    .values({ fromId: u.id, toId: friendId, content: content.trim() })
+    .returning();
+
+  return res.json(msg);
+});
+
 // ── GET /leaderboard — топ-20 пользователей по числу репортов ────────────────
 router.get("/leaderboard", async (_req, res) => {
   try {
@@ -368,7 +523,7 @@ router.get("/leaderboard", async (_req, res) => {
       .from(telegramUsersTable)
       .leftJoin(dpsEventsTable, eq(dpsEventsTable.chatId, telegramUsersTable.telegramId))
       .groupBy(
-        telegramUsersTable.id,
+        telegramUsersTable.telegramId,
         telegramUsersTable.firstName,
         telegramUsersTable.username,
       )

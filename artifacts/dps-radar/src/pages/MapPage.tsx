@@ -2,7 +2,7 @@ import React from 'react';
 import * as L from 'leaflet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Navigation, Settings, MapPin, X, Check, Trash2, Camera, Play, Square, AlertTriangle, Send, User, Users, LocateFixed, Trophy } from 'lucide-react';
+import { Navigation, Settings, MapPin, X, Check, Trash2, Camera, Play, Square, AlertTriangle, Send, User, Users, LocateFixed, Trophy, MessageCircle, ChevronLeft, Smile } from 'lucide-react';
 import { useListDpsEvents, useGetDpsStats } from '@workspace/api-client-react';
 import { GeocodeResult, useGeocodeSearch } from '@/lib/nominatim';
 import { fetchOsrmRoute, calculateAvoidanceWaypoints, RouteResult } from '@/lib/osrm';
@@ -198,6 +198,19 @@ export default function MapPage() {
   // Звуковой сигнал — ключ уже-сработавшей камеры (чтобы не бипать непрерывно)
   const alertedCamKeyRef = React.useRef<string | null>(null);
   const friendLocLayerRef = React.useRef<L.LayerGroup>(new L.LayerGroup());
+  const chatEndRef = React.useRef<HTMLDivElement>(null);
+
+  // ── Чат ──────────────────────────────────────────────────────────────────────
+  type ChatMessage = { id: number; fromId: number; toId: number; content: string; createdAt: string; readAt: string | null }
+  type ChatPreview = { friend: Friend; lastMessage: ChatMessage | null; unread: number }
+  const [showChats,      setShowChats]      = React.useState(false);
+  const [chatFriend,     setChatFriend]     = React.useState<Friend | null>(null);
+  const [chatMessages,   setChatMessages]   = React.useState<ChatMessage[]>([]);
+  const [chatPreviews,   setChatPreviews]   = React.useState<ChatPreview[]>([]);
+  const [chatInput,      setChatInput]      = React.useState('');
+  const [showEmojiPicker,setShowEmojiPicker]= React.useState(false);
+  const [sendingMsg,     setSendingMsg]     = React.useState(false);
+  const [totalUnread,    setTotalUnread]    = React.useState(0);
 
   const BASE = (import.meta.env.BASE_URL as string) ?? '/dps-radar/';
 
@@ -746,6 +759,83 @@ export default function MapPage() {
     void loadFriends();
   };
 
+  // ── Chat functions ────────────────────────────────────────────────────────────
+  const loadChatPreviews = React.useCallback(async () => {
+    if (!tgInitData) return;
+    const r = await fetch(`${BASE}api/dps-radar/chats`, {
+      method: 'GET',
+      headers: { 'x-init-data': tgInitData },
+    }).catch(() => null);
+    if (!r?.ok) return;
+    const data = await r.json() as ChatPreview[];
+    setChatPreviews(data);
+    setTotalUnread(data.reduce((s, c) => s + c.unread, 0));
+  }, [BASE, tgInitData]);
+
+  const loadChatMessages = React.useCallback(async (friendId: number) => {
+    if (!tgInitData) return;
+    const r = await fetch(`${BASE}api/dps-radar/chats/${friendId}`, {
+      headers: { 'x-init-data': tgInitData },
+    }).catch(() => null);
+    if (!r?.ok) return;
+    const data = await r.json() as ChatMessage[];
+    setChatMessages(data);
+    // Обновляем счётчик непрочитанных в превью
+    setChatPreviews(prev => prev.map(p => p.friend.telegramId === friendId ? { ...p, unread: 0 } : p));
+    setTotalUnread(prev => {
+      const wasBadge = chatPreviews.find(p => p.friend.telegramId === friendId)?.unread ?? 0;
+      return Math.max(0, prev - wasBadge);
+    });
+  }, [BASE, tgInitData, chatPreviews]);
+
+  const sendChatMessage = async () => {
+    if (!tgInitData || !chatFriend || !chatInput.trim() || sendingMsg) return;
+    setSendingMsg(true);
+    const content = chatInput.trim();
+    setChatInput('');
+    setShowEmojiPicker(false);
+    const r = await fetch(`${BASE}api/dps-radar/chats/${chatFriend.telegramId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-init-data': tgInitData },
+      body: JSON.stringify({ content }),
+    }).catch(() => null);
+    if (r?.ok) {
+      const msg = await r.json() as ChatMessage;
+      setChatMessages(prev => [...prev, msg]);
+    }
+    setSendingMsg(false);
+  };
+
+  // Открыть переписку с другом
+  const openChat = async (friend: Friend) => {
+    setChatFriend(friend);
+    setChatMessages([]);
+    await loadChatMessages(friend.telegramId);
+  };
+
+  // Скролл вниз при новых сообщениях
+  React.useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  // Polling: непрочитанные — каждые 15с
+  React.useEffect(() => {
+    if (!tgInitData) return;
+    void loadChatPreviews();
+    const t = setInterval(() => void loadChatPreviews(), 15_000);
+    return () => clearInterval(t);
+  }, [tgInitData, loadChatPreviews]);
+
+  // Polling: сообщения внутри диалога — каждые 4с
+  React.useEffect(() => {
+    if (!chatFriend || !tgInitData) return;
+    const t = setInterval(() => void loadChatMessages(chatFriend.telegramId), 4_000);
+    return () => clearInterval(t);
+  }, [chatFriend, tgInitData, loadChatMessages]);
+
+  // Загрузить превью при открытии чата
+  React.useEffect(() => { if (showChats) void loadChatPreviews(); }, [showChats, loadChatPreviews]);
+
   const submitReport = async () => {
     if (!gps) { setReportError('Включите геолокацию для отправки сообщений'); return; }
     if (!reportAddress.trim()) { setReportError('Укажите адрес'); return; }
@@ -1277,6 +1367,20 @@ export default function MapPage() {
               )}
             </button>
 
+            {/* Чат */}
+            <button
+              onClick={() => { setShowChats(true); setChatFriend(null); }}
+              className="relative flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border bg-emerald-500/10 border-emerald-500/30 text-emerald-400 active:bg-emerald-500/25 transition-colors"
+            >
+              <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Чат</span>
+              {totalUnread > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 shadow-md leading-none">
+                  {totalUnread > 9 ? '9+' : totalUnread}
+                </span>
+              )}
+            </button>
+
             <div className="flex-1" />
 
             {/* Метка */}
@@ -1555,6 +1659,176 @@ export default function MapPage() {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Чат: список диалогов (bottom sheet) ──────────────────────── */}
+      {showChats && !chatFriend && (
+        <div className="absolute inset-0 z-50 flex items-end" onClick={() => setShowChats(false)}>
+          <div
+            className="w-full bg-card border-t border-border rounded-t-3xl shadow-2xl"
+            style={{ maxHeight: '80vh', display: 'flex', flexDirection: 'column', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Шапка */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
+              <div className="flex items-center gap-2 font-bold text-base">
+                <MessageCircle className="w-5 h-5 text-emerald-400" />
+                Переписки
+              </div>
+              <button onClick={() => setShowChats(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Список */}
+            <div className="overflow-y-auto flex-1 px-4 pb-2">
+              {chatPreviews.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
+                  <MessageCircle className="w-10 h-10 opacity-20" />
+                  <span className="text-sm text-center">Нет диалогов.<br/>Добавьте друзей в профиле, чтобы общаться.</span>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {chatPreviews.map(({ friend: f, lastMessage: lm, unread }) => (
+                    <button
+                      key={f.telegramId}
+                      className="w-full flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-muted/40 active:bg-muted/60 transition-colors text-left"
+                      onClick={() => void openChat(f)}
+                    >
+                      {/* Аватар */}
+                      <div className="w-11 h-11 rounded-full bg-emerald-500/20 flex items-center justify-center text-base font-bold text-emerald-400 shrink-0 relative">
+                        {(f.firstName?.[0] ?? '?').toUpperCase()}
+                        {unread > 0 && (
+                          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 leading-none">
+                            {unread > 9 ? '9+' : unread}
+                          </span>
+                        )}
+                      </div>
+                      {/* Имя + превью */}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold">{f.firstName}{f.lastName ? ` ${f.lastName}` : ''}</div>
+                        <div className="text-xs text-muted-foreground truncate mt-0.5">
+                          {lm ? (lm.fromId === f.telegramId ? '' : 'Вы: ') + lm.content : 'Нет сообщений'}
+                        </div>
+                      </div>
+                      {/* Время */}
+                      {lm && (
+                        <div className="text-[10px] text-muted-foreground shrink-0">
+                          {new Date(lm.createdAt).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Чат: диалог ───────────────────────────────────────────────── */}
+      {showChats && chatFriend && (
+        <div className="absolute inset-0 z-50 flex flex-col bg-card">
+          {/* Шапка */}
+          <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-border shrink-0"
+            style={{ paddingTop: 'max(16px, env(safe-area-inset-top))' }}>
+            <button onClick={() => setChatFriend(null)} className="text-muted-foreground hover:text-foreground p-1">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div className="w-9 h-9 rounded-full bg-emerald-500/20 flex items-center justify-center font-bold text-emerald-400 text-sm shrink-0">
+              {(chatFriend.firstName?.[0] ?? '?').toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-sm">{chatFriend.firstName}{chatFriend.lastName ? ` ${chatFriend.lastName}` : ''}</div>
+              {chatFriend.username && <div className="text-xs text-muted-foreground">@{chatFriend.username}</div>}
+            </div>
+            <button onClick={() => { setChatFriend(null); setShowChats(false); }} className="text-muted-foreground hover:text-foreground">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Сообщения */}
+          <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
+            {chatMessages.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                <MessageCircle className="w-8 h-8 opacity-20" />
+                <span className="text-sm">Напишите первое сообщение</span>
+              </div>
+            ) : (
+              chatMessages.map(msg => {
+                const isMe = msg.fromId !== chatFriend.telegramId;
+                return (
+                  <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[78%] px-3 py-2 rounded-2xl text-sm ${
+                      isMe
+                        ? 'bg-blue-600 text-white rounded-br-sm'
+                        : 'bg-muted/60 text-foreground rounded-bl-sm'
+                    }`}>
+                      <div className="break-words">{msg.content}</div>
+                      <div className={`text-[10px] mt-1 ${isMe ? 'text-blue-200' : 'text-muted-foreground'} text-right`}>
+                        {new Date(msg.createdAt).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}
+                        {isMe && msg.readAt && ' ✓'}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Эмодзи-пикер */}
+          {showEmojiPicker && (
+            <div className="shrink-0 px-3 pb-2">
+              <div className="bg-muted/80 rounded-2xl p-3 grid grid-cols-10 gap-1">
+                {[
+                  '😀','😂','😍','🥰','😎','🤔','😅','🤣','😭','😱',
+                  '😡','🥺','😇','🤗','🫡','😴','🥳','😈','🤫','😬',
+                  '👍','👎','❤️','🔥','💯','🎉','🚀','⭐','💪','🙏',
+                  '👋','🤦','🎯','💀','👀','🤙','🤝','✅','❌','💬',
+                  '🚔','📷','🚗','⚠️','🛣️','🏁','🚦','📍','⏱️','🗺️',
+                ].map(em => (
+                  <button
+                    key={em}
+                    className="text-xl w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 active:bg-white/20 transition-colors"
+                    onClick={() => { setChatInput(prev => prev + em); }}
+                  >
+                    {em}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Поле ввода */}
+          <div className="shrink-0 border-t border-border px-3 py-2 flex items-end gap-2"
+            style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
+            <button
+              onClick={() => setShowEmojiPicker(v => !v)}
+              className={`p-2 rounded-xl transition-colors shrink-0 ${showEmojiPicker ? 'bg-yellow-500/20 text-yellow-400' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              <Smile className="w-5 h-5" />
+            </button>
+            <textarea
+              className="flex-1 bg-muted/40 border border-border rounded-xl px-3 py-2 text-sm outline-none focus:border-ring resize-none text-foreground placeholder:text-muted-foreground"
+              placeholder="Сообщение…"
+              rows={1}
+              style={{ maxHeight: 96 }}
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendChatMessage(); }
+              }}
+            />
+            <button
+              disabled={!chatInput.trim() || sendingMsg}
+              onClick={() => void sendChatMessage()}
+              className="p-2.5 rounded-xl bg-blue-600 text-white disabled:opacity-40 active:bg-blue-700 transition-colors shrink-0"
+            >
+              <Send className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}
