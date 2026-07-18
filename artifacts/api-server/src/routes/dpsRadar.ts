@@ -598,6 +598,58 @@ router.get("/dps-radar/osm-cameras", async (req, res) => {
   return res.json({ elements: [...dbElements, ...osmElements, ...wazeElements] });
 });
 
+// ── Метки нарушений ───────────────────────────────────────────────────────────
+const VIOLATION_TITLE: Record<string, string> = {
+  speed:      "Камера скорости",
+  seatbelt:   "Ремень безопасности",
+  stop_line:  "Стоп-линия",
+  red_light:  "Проезд на красный",
+  pedestrian: "Пешеходный переход",
+  parking:    "Остановка/стоянка",
+};
+
+// ── Извлекаем читаемый адрес из сырого текста docx ───────────────────────────
+function extractAddress(desc: string): string {
+  // 1) После названия города: "г. Благовещенск, …"
+  let m = desc.match(/г\.\s*[А-ЯЁ][а-яё]+[,\s]+(.+)/);
+  if (m) return cleanAddr(m[1]);
+
+  // 2) Первое вхождение улицы / шоссе / переулка
+  m = desc.match(/((?:ул|пр|пер|ш|пл|просп|бул|наб)\.\s*.+)/i);
+  if (m) return cleanAddr(m[1]);
+
+  // 3) «Игнатьевское ш.» / «Новотроицкое ш.» — без «ул.»
+  m = desc.match(/((?:Игнатьевское|Новотроицкое|Кольцевая|Тепличн).+)/);
+  if (m) return cleanAddr(m[1]);
+
+  return "";
+}
+
+function cleanAddr(s: string): string {
+  return s
+    // Пробел перед маленькой буквой → большой (напр. «шосИгн»)
+    .replace(/([а-яё])([А-ЯЁ])/g, "$1 $2")
+    // Пробел перед сокращениями улиц когда нет пробела (напр. «наул.» → «на ул.»)
+    .replace(/([а-яё])(ул\.|пер\.|ш\.|пл\.|наб\.|бул\.|просп\.|пр\.)/g, "$1 $2")
+    // Пробел перед типичными словами-продолжениями (напр. «стороныул» → «стороны ул»)
+    .replace(/([а-яё])(въезд|выезд|пересечени|проезжих|сторон|перекрест)/g, "$1 $2")
+    // Убираем лишние пробелы и хвостовые запятые
+    .replace(/\s{2,}/g, " ")
+    .replace(/[,\s]+$/, "")
+    .trim()
+    .slice(0, 70);
+}
+
+// ── Собираем читаемое название камеры ────────────────────────────────────────
+function buildDisplayName(desc: string, violations: string[]): string {
+  // Уже чистое имя (OSM или пользовательское) — возвращаем как есть
+  if (/^Камера фиксации скорости/.test(desc)) return "Камера скорости";
+
+  const title = VIOLATION_TITLE[violations[0] ?? "speed"] ?? "Камера";
+  const addr  = extractAddress(desc);
+  return addr ? `${title} · ${addr}` : title;
+}
+
 // ── Парсим нарушения из description ──────────────────────────────────────────
 function parseViolations(desc: string): string[] {
   const d = desc.toLowerCase();
@@ -635,14 +687,18 @@ router.get("/dps-radar/cameras-in-bounds", async (req, res) => {
     .limit(500);
 
   return res.json({
-    elements: cams.map(c => ({
-      id:         c.id,
-      lat:        c.lat,
-      lon:        c.lng,
-      _source:    "db",
-      violations: parseViolations(c.description ?? ""),
-      tags:       { name: c.description ?? "Камера фиксации скорости", maxspeed: "60" },
-    })),
+    elements: cams.map(c => {
+      const desc       = c.description ?? "";
+      const violations = parseViolations(desc);
+      return {
+        id:         c.id,
+        lat:        c.lat,
+        lon:        c.lng,
+        _source:    "db",
+        violations,
+        tags:       { name: buildDisplayName(desc, violations), maxspeed: "60" },
+      };
+    }),
   });
 });
 
