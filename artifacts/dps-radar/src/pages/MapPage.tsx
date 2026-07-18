@@ -2,7 +2,7 @@ import React from 'react';
 import * as L from 'leaflet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Navigation, Settings, MapPin, X, Check, Trash2, Camera, Play, Square } from 'lucide-react';
+import { Navigation, Settings, MapPin, X, Check, Trash2, Camera, Play, Square, AlertTriangle, Send } from 'lucide-react';
 import { useListDpsEvents, useGetDpsStats } from '@workspace/api-client-react';
 import { GeocodeResult, useGeocodeSearch } from '@/lib/nominatim';
 import { fetchOsrmRoute, calculateAvoidanceWaypoints, RouteResult } from '@/lib/osrm';
@@ -149,6 +149,13 @@ export default function MapPage() {
 
   // OSM камеры
   const [osmCameras, setOsmCameras] = React.useState<OsmCamera[]>([]);
+
+  // Репортинг события
+  const [showReportDialog, setShowReportDialog] = React.useState(false);
+  const [reportType,   setReportType]   = React.useState<'dps_post' | 'accident'>('dps_post');
+  const [reportAddress, setReportAddress] = React.useState('');
+  const [reportStatus, setReportStatus] = React.useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [reportError,  setReportError]  = React.useState('');
 
   // GPS позиция
   const gps = useGpsPosition();
@@ -486,6 +493,35 @@ export default function MapPage() {
     if (fromPoint && toPoint) void handleCalculateRoute();
   }, [fromPoint, toPoint]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const submitReport = async () => {
+    if (!gps) { setReportError('Включите геолокацию для отправки сообщений'); return; }
+    if (!reportAddress.trim()) { setReportError('Укажите адрес'); return; }
+    setReportStatus('loading');
+    setReportError('');
+    try {
+      const base = import.meta.env.BASE_URL ?? '/dps-radar/';
+      const res = await fetch(`${base}api/dps-radar/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: reportType,
+          address: reportAddress.trim(),
+          city: citySlug,
+          userLat: gps.lat,
+          userLng: gps.lng,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) { setReportStatus('error'); setReportError(json.error ?? 'Ошибка сервера'); return; }
+      setReportStatus('success');
+      setReportAddress('');
+      setTimeout(() => { setShowReportDialog(false); setReportStatus('idle'); }, 2000);
+    } catch {
+      setReportStatus('error');
+      setReportError('Не удалось отправить. Проверьте соединение.');
+    }
+  };
+
   const confirmAddMarker = () => {
     if (!pendingCoords || !newMarkerLabel.trim()) return;
     const marker: CustomMarker = {
@@ -769,6 +805,89 @@ export default function MapPage() {
 
       <div className="flex-1" />
 
+      {/* ── Диалог репортинга ─────────────────────────────────────────── */}
+      {showReportDialog && (
+        <div
+          className="absolute inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
+          onClick={e => { if (e.target === e.currentTarget) { setShowReportDialog(false); setReportStatus('idle'); setReportError(''); } }}
+        >
+          <div className="w-full max-w-md bg-card border-t border-border rounded-t-3xl p-5 pb-8 shadow-2xl"
+            onClick={e => e.stopPropagation()}>
+            {/* Ручка */}
+            <div className="w-10 h-1 bg-muted-foreground/30 rounded-full mx-auto mb-4" />
+            <div className="flex items-center gap-2 mb-4">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              <span className="font-bold text-base">Сообщить об инциденте</span>
+            </div>
+
+            {/* Выбор типа */}
+            <div className="flex gap-2 mb-4">
+              {([
+                { value: 'dps_post' as const,  label: '🚔 Пост ДПС' },
+                { value: 'accident' as const,   label: '💥 Авария' },
+              ] as const).map(opt => (
+                <button key={opt.value}
+                  onClick={() => setReportType(opt.value)}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
+                    reportType === opt.value
+                      ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                      : 'bg-muted/40 border-border text-muted-foreground hover:bg-muted/60'
+                  }`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Адрес */}
+            <div className="text-xs text-muted-foreground font-medium mb-1">
+              Адрес или ориентир
+            </div>
+            <input
+              autoFocus
+              type="text"
+              placeholder="Напр.: ул. Горького, 52 или пересечение Калинина/Амурской"
+              className="w-full bg-input/60 border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-ring mb-3 text-foreground placeholder:text-muted-foreground"
+              value={reportAddress}
+              onChange={e => { setReportAddress(e.target.value); setReportError(''); }}
+              onKeyDown={e => { if (e.key === 'Enter') void submitReport(); }}
+            />
+
+            {/* Статус */}
+            {reportStatus === 'error' && (
+              <div className="flex items-start gap-1.5 text-red-400 text-xs mb-3">
+                <X className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {reportError}
+              </div>
+            )}
+            {reportStatus === 'success' && (
+              <div className="flex items-center gap-1.5 text-emerald-400 text-xs mb-3">
+                <Check className="w-3.5 h-3.5" /> Сообщение принято! Спасибо.
+              </div>
+            )}
+            {!gps && reportStatus !== 'success' && (
+              <div className="text-amber-400 text-xs mb-3">
+                ⚠️ Включите геолокацию — она нужна для проверки вашего местоположения
+              </div>
+            )}
+
+            {/* Кнопки */}
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1"
+                onClick={() => { setShowReportDialog(false); setReportStatus('idle'); setReportError(''); setReportAddress(''); }}>
+                <X className="w-4 h-4 mr-1" /> Отмена
+              </Button>
+              <Button
+                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold gap-1.5"
+                disabled={!gps || !reportAddress.trim() || reportStatus === 'loading' || reportStatus === 'success'}
+                onClick={() => void submitReport()}>
+                {reportStatus === 'loading'
+                  ? <><span className="animate-spin">⏳</span> Проверяем…</>
+                  : <><Send className="w-4 h-4" /> Отправить</>}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Диалог ввода метки ────────────────────────────────────────── */}
       {pendingCoords && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -822,6 +941,16 @@ export default function MapPage() {
               </div>
             )}
           </div>
+
+          {/* Кнопка: сообщить об инциденте */}
+          <button
+            onClick={() => { setShowReportDialog(true); setReportStatus('idle'); setReportError(''); }}
+            title="Сообщить о посте ДПС или аварии"
+            className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-xl border transition-colors shrink-0 bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Сообщить
+          </button>
 
           {/* Кнопка: добавить метку */}
           <button

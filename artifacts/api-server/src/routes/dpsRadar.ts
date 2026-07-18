@@ -69,6 +69,14 @@ function extractAddressHint(text: string): string {
   return capWords?.[0] ?? "";
 }
 
+function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6_371_000;
+  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180, Δλ = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 async function geocodeAddress(
   hint: string,
   citySlug: string,
@@ -700,6 +708,46 @@ router.get("/dps-radar/cameras-in-bounds", async (req, res) => {
       };
     }),
   });
+});
+
+// ── Репортинг события из веб-приложения (POST) ───────────────────────────────
+router.post("/dps-radar/events", async (req, res) => {
+  const { type, address, city, userLat, userLng } = req.body as {
+    type: string; address: string; city?: string; userLat: number; userLng: number;
+  };
+
+  if (!type || !address?.trim() || userLat == null || userLng == null) {
+    return res.status(400).json({ error: "type, address, userLat, userLng обязательны" });
+  }
+  if (!["dps_post", "accident"].includes(type)) {
+    return res.status(400).json({ error: "type должен быть dps_post или accident" });
+  }
+
+  const citySlug = city && CITIES[city] ? city : DEFAULT_CITY;
+  const geo = await geocodeAddress(address.trim(), citySlug);
+  if (!geo) {
+    return res.status(400).json({ error: "Адрес не найден. Уточните название улицы или перекрёстка." });
+  }
+
+  const distM = haversineM(userLat, userLng, geo.lat, geo.lng);
+  if (distM > 500) {
+    return res.status(400).json({
+      error: `Вы в ${Math.round(distM)} м от указанного адреса. Сообщение зачтётся только если вы рядом (до 500 м).`,
+    });
+  }
+
+  const [event] = await db.insert(dpsEventsTable).values({
+    type,
+    lat:        geo.lat,
+    lng:        geo.lng,
+    address:    address.trim().slice(0, 200),
+    city:       citySlug,
+    chatId:     0,
+    author:     "web-app",
+    lastSeenAt: new Date(),
+  }).returning();
+
+  return res.json(event);
 });
 
 // ── Добавить камеру с карты (POST) ────────────────────────────────────────────
