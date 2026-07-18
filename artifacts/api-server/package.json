@@ -7,7 +7,8 @@
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "seed:cameras": "node -e \"import('esbuild').then(({build})=>build({entryPoints:['src/scripts/seedOsmCameras.mjs'],bundle:true,platform:'node',format:'cjs',outfile:'/tmp/_seed_cameras.cjs',external:['pg-native']})).then(()=>import('child_process').then(({execSync})=>execSync('node /tmp/_seed_cameras.cjs',{stdio:'inherit'})))\""
   },
   "dependencies": {
     "@google-cloud/storage": "^7.21.0",
