@@ -64,9 +64,12 @@ export default defineConfig({
     // Proxy API calls to the Express API server so profile/sync and other
     // DPS Radar endpoints work both in Replit dev and on VDS
     proxy: {
-      '/api': {
+      // Vite receives the full path including base (/dps-radar/api/…),
+      // so we match /dps-radar/api and rewrite it to /api before forwarding
+      '/dps-radar/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/dps-radar/, ''),
       },
     },
     // Disable the error overlay — users open the app inside Telegram and
