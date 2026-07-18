@@ -2,13 +2,7 @@
 set -e
 
 HOST_CONF="/root/Event-Ticket-Hub/nginx.conf"
-echo "=== Редактирую host nginx конфиг: $HOST_CONF ==="
-
-echo "--- Текущее содержимое ---"
-cat "$HOST_CONF"
-
-echo ""
-echo "=== Добавляю DPS Radar location блоки ==="
+echo "=== Обновляю DPS Radar location блоки в $HOST_CONF ==="
 
 python3 - "$HOST_CONF" <<'PYEOF'
 import sys, re
@@ -17,10 +11,25 @@ path = sys.argv[1]
 with open(path) as f:
     conf = f.read()
 
-dps_static = """
-    # DPS Radar static frontend
+# Удалить все старые блоки DPS Radar (если были добавлены ранее с неверным портом)
+conf = re.sub(
+    r'\n\s*# DPS Radar.*?(?=\n\s*(?:#|location|server|$))',
+    '',
+    conf,
+    flags=re.DOTALL
+)
+# Дополнительно убрать осиротевшие location /dps-radar/ и /api/dps-radar/ блоки
+conf = re.sub(
+    r'\n\s*location\s+/(?:api/)?dps-radar/\s*\{[^}]*\}',
+    '',
+    conf,
+    flags=re.DOTALL
+)
+
+new_block = """
+    # DPS Radar — статика + API через pm2 (host:8080)
     location /dps-radar/ {
-        proxy_pass http://172.17.0.1:5174/dps-radar/;
+        proxy_pass http://172.17.0.1:8080/dps-radar/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -29,34 +38,18 @@ dps_static = """
     }
 """
 
-dps_api = """
-    # DPS Radar API
-    location /api/dps-radar/ {
-        proxy_pass http://172.17.0.1:8080/api/dps-radar/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-"""
-
-# Не добавлять повторно
-if '/dps-radar/' not in conf:
-    # Вставить перед блоком location /api/ или location /
-    target = re.search(r'(\s*# (?:Proxy API|Single-page|location\s*/[^\n]*))', conf)
-    if target:
-        pos = target.start()
-        conf = conf[:pos] + dps_static + dps_api + conf[pos:]
-    else:
-        # Вставить перед последней закрывающей } в server блоке
-        pos = conf.rfind('}')
-        conf = conf[:pos] + dps_static + dps_api + '\n' + conf[pos:]
-    with open(path, 'w') as f:
-        f.write(conf)
-    print("Блоки DPS Radar добавлены.")
+# Вставить перед location /api/ или location /
+m = re.search(r'(\n\s*(?:# (?:Proxy API|Single-page)|location\s*/(?:api)?[/ {]))', conf)
+if m:
+    pos = m.start()
+    conf = conf[:pos] + new_block + conf[pos:]
 else:
-    print("Блоки DPS Radar уже присутствуют, пропускаю.")
+    pos = conf.rfind('}')
+    conf = conf[:pos] + new_block + '\n' + conf[pos:]
+
+with open(path, 'w') as f:
+    f.write(conf)
+print("Готово.")
 PYEOF
 
 echo ""
@@ -81,4 +74,10 @@ echo "=== Перезагрузка nginx ==="
 docker exec "$NGINX_CTR" nginx -s reload
 
 echo ""
-echo "Готово! Проверь: https://ticketflowru.ru/api/dps-radar/cameras"
+echo "=== Проверяю pm2 ==="
+pm2 list 2>/dev/null || echo "(pm2 не установлен или не запущен)"
+
+echo ""
+echo "Готово! Проверь:"
+echo "  curl -s https://ticketflowru.ru/dps-radar/"
+echo "  curl -s https://ticketflowru.ru/api/dps-radar/cameras | head -c 200"
