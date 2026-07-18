@@ -4,6 +4,7 @@ import { logger } from "./lib/logger";
 import { seedIfEmpty, seedAdditionalEventsIfMissing, seedConcertsIfMissing } from "./seed";
 import { seedPaymentSettingsIfEmpty } from "./lib/paymentSettingsSeed";
 import { getStripeSync } from "./stripeClient";
+import { setupTelegramWebhook } from "./lib/dpsWebhookSetup";
 
 const rawPort = process.env["PORT"];
 
@@ -91,11 +92,16 @@ try {
   logger.error({ err }, "Failed to seed concert events");
 }
 
-app.listen(port, (err) => {
+app.listen(port, async (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
   }
 
   logger.info({ port }, "Server listening");
+
+  // Set up Telegram webhook for DPS Radar bot (non-blocking)
+  setupTelegramWebhook().catch((e: unknown) =>
+    logger.warn({ err: e }, "Telegram webhook setup failed"),
+  );
 });

@@ -29,3 +29,5 @@ export * from "./orderSeats";
 export * from "./paymentSettings";
 export * from "./conversations";
 export * from "./messages";
+export * from "./dpsEvents";
+export * from "./dpsEvents";

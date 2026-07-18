@@ -1,0 +1,71 @@
+version: "3.9"
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     dpsradar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB:       dpsradar
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dpsradar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── API-сервер (бот + REST) ─────────────────────────────────────────────────
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    environment:
+      PORT:              3000
+      NODE_ENV:          production
+      DATABASE_URL:      postgresql://dpsradar:${POSTGRES_PASSWORD}@postgres:5432/dpsradar
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      SESSION_SECRET:    ${SESSION_SECRET}
+      # Укажите ваш домен — бот автоматически зарегистрирует webhook при старте
+      PUBLIC_BASE_URL:   ${PUBLIC_BASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Инициализация БД (запускается один раз, потом останавливается) ──────────
+  migrate:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: "no"
+    environment:
+      PORT:         9999
+      DATABASE_URL: postgresql://dpsradar:${POSTGRES_PASSWORD}@postgres:5432/dpsradar
+    entrypoint: >
+      sh -c "
+        npm install -g pnpm@10.26.1 &&
+        pnpm --filter @workspace/db run push --accept-data-loss
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - migrate
+
+  # ── nginx (фронтенд Mini App + reverse proxy) ───────────────────────────────
+  nginx:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

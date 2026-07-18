@@ -26,6 +26,8 @@ import type {
   AuthUser,
   CheckoutInput,
   CheckoutResult,
+  DpsEvent,
+  DpsStats,
   ErrorEnvelope,
   EventDetail,
   EventInput,
@@ -52,6 +54,7 @@ import type {
   SessionInput,
   SessionSummary,
   SessionUpdateInput,
+  TelegramWebhookUpdate,
   TicketCategory,
   TicketCategoryPriceInput,
   UpdateAdminUserInput,
@@ -3620,6 +3623,232 @@ export const useDeleteOpenaiConversation = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getDeleteOpenaiConversationMutationOptions(options));
+    }
+
+export const getListDpsEventsUrl = () => {
+
+
+
+
+  return `/api/dps-radar/events`
+}
+
+/**
+ * Возвращает события с last_seen_at не старше 2 часов.
+ * @summary Список активных событий ДПС и аварий на карте Благовещенска
+ */
+export const listDpsEvents = async ( options?: RequestInit): Promise<DpsEvent[]> => {
+
+  return customFetch<DpsEvent[]>(getListDpsEventsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDpsEventsQueryKey = () => {
+    return [
+    `/api/dps-radar/events`
+    ] as const;
+    }
+
+
+export const getListDpsEventsQueryOptions = <TData = Awaited<ReturnType<typeof listDpsEvents>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDpsEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDpsEventsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDpsEvents>>> = ({ signal }) => listDpsEvents({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDpsEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDpsEventsQueryResult = NonNullable<Awaited<ReturnType<typeof listDpsEvents>>>
+export type ListDpsEventsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Список активных событий ДПС и аварий на карте Благовещенска
+ */
+
+export function useListDpsEvents<TData = Awaited<ReturnType<typeof listDpsEvents>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDpsEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDpsEventsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetDpsStatsUrl = () => {
+
+
+
+
+  return `/api/dps-radar/stats`
+}
+
+/**
+ * @summary Статистика — количество активных постов ДПС и аварий
+ */
+export const getDpsStats = async ( options?: RequestInit): Promise<DpsStats> => {
+
+  return customFetch<DpsStats>(getGetDpsStatsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDpsStatsQueryKey = () => {
+    return [
+    `/api/dps-radar/stats`
+    ] as const;
+    }
+
+
+export const getGetDpsStatsQueryOptions = <TData = Awaited<ReturnType<typeof getDpsStats>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDpsStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDpsStatsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDpsStats>>> = ({ signal }) => getDpsStats({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDpsStats>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDpsStatsQueryResult = NonNullable<Awaited<ReturnType<typeof getDpsStats>>>
+export type GetDpsStatsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Статистика — количество активных постов ДПС и аварий
+ */
+
+export function useGetDpsStats<TData = Awaited<ReturnType<typeof getDpsStats>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDpsStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDpsStatsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getHandleDpsTelegramWebhookUrl = () => {
+
+
+
+
+  return `/api/dps-radar/telegram-webhook`
+}
+
+/**
+ * @summary Telegram webhook — принимает обновления от бота
+ */
+export const handleDpsTelegramWebhook = async (telegramWebhookUpdate: TelegramWebhookUpdate, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getHandleDpsTelegramWebhookUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(telegramWebhookUpdate)
+  }
+);}
+
+
+
+
+
+export const getHandleDpsTelegramWebhookMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof handleDpsTelegramWebhook>>, TError,{data: BodyType<TelegramWebhookUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof handleDpsTelegramWebhook>>, TError,{data: BodyType<TelegramWebhookUpdate>}, TContext> => {
+
+const mutationKey = ['handleDpsTelegramWebhook'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof handleDpsTelegramWebhook>>, {data: BodyType<TelegramWebhookUpdate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  handleDpsTelegramWebhook(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type HandleDpsTelegramWebhookMutationResult = NonNullable<Awaited<ReturnType<typeof handleDpsTelegramWebhook>>>
+    export type HandleDpsTelegramWebhookMutationBody = BodyType<TelegramWebhookUpdate>
+    export type HandleDpsTelegramWebhookMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Telegram webhook — принимает обновления от бота
+ */
+export const useHandleDpsTelegramWebhook = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof handleDpsTelegramWebhook>>, TError,{data: BodyType<TelegramWebhookUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof handleDpsTelegramWebhook>>,
+        TError,
+        {data: BodyType<TelegramWebhookUpdate>},
+        TContext
+      > => {
+      return useMutation(getHandleDpsTelegramWebhookMutationOptions(options));
     }
 
 export const getSendOpenaiMessageUrl = (id: number,) => {

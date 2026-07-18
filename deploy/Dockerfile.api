@@ -1,0 +1,42 @@
+# ============================================================
+# Dockerfile.api — сборка и запуск API-сервера (бот + REST)
+# ============================================================
+FROM node:20-alpine AS builder
+
+# Устанавливаем pnpm той же версии, что используется в проекте
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+
+WORKDIR /app
+
+# Сначала копируем только манифесты (для кэширования слоёв)
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
+
+# Копируем package.json всех пакетов, которые нужны для сборки api-server
+COPY lib/db/package.json                    lib/db/
+COPY lib/api-spec/package.json              lib/api-spec/
+COPY lib/api-client-react/package.json      lib/api-client-react/
+COPY artifacts/api-server/package.json      artifacts/api-server/
+
+# Устанавливаем зависимости (frozen = точно по lockfile, без сетевых проверок)
+RUN pnpm install --frozen-lockfile
+
+# Копируем исходный код
+COPY lib/         lib/
+COPY artifacts/api-server/ artifacts/api-server/
+
+# Собираем (esbuild бандлирует всё в один файл dist/index.mjs)
+RUN pnpm --filter @workspace/db           run build || true
+RUN pnpm --filter @workspace/api-spec     run build || true
+RUN pnpm --filter @workspace/api-server   run build
+
+# ---- Runtime stage (минимальный образ) ----
+FROM node:20-alpine
+WORKDIR /app
+
+# Копируем только бандл — node_modules не нужны, всё внутри
+COPY --from=builder /app/artifacts/api-server/dist ./dist
+
+ENV NODE_ENV=production
+EXPOSE 3000
+
+CMD ["node", "--enable-source-maps", "dist/index.mjs"]

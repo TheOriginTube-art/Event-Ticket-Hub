@@ -1,0 +1,174 @@
+# Деплой «ДПС Радар» на VDS
+
+## Что запускается
+
+| Контейнер | Роль |
+|-----------|------|
+| `postgres` | База данных PostgreSQL 16 |
+| `api` | Node.js сервер: Telegram webhook, REST API событий |
+| `nginx` | Раздаёт Mini App (карта) + проксирует `/api/` на бэкенд |
+
+Порт **80** открывается наружу. Предполагается, что на сервере уже есть
+nginx/Caddy с SSL, который проксирует `https://ваш-домен.ru → localhost:80`.
+
+---
+
+## Быстрый старт
+
+### 1. Скопируйте репозиторий на сервер
+
+```bash
+git clone <ваш-репо> /opt/dps-radar
+cd /opt/dps-radar
+```
+
+### 2. Создайте `.env`
+
+```bash
+cp deploy/.env.example deploy/.env
+nano deploy/.env   # заполните все значения
+```
+
+### 3. Настройте ваш SSL-nginx (если ещё не настроен)
+
+Пример `/etc/nginx/sites-available/dps-radar`:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name dps.ваш-домен.ru;
+
+    ssl_certificate     /etc/letsencrypt/live/dps.ваш-домен.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/dps.ваш-домен.ru/privkey.pem;
+
+    location / {
+        proxy_pass         http://127.0.0.1:80;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Forwarded-Proto https;
+        proxy_set_header   X-Real-IP $remote_addr;
+    }
+}
+
+# Редирект http → https
+server {
+    listen 80;
+    server_name dps.ваш-домен.ru;
+    return 301 https://$host$request_uri;
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/dps-radar /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### 4. Создайте таблицы в БД (один раз при первом запуске)
+
+```bash
+cd /opt/dps-radar
+
+# Поднимаем только postgres
+docker compose -f deploy/docker-compose.yml up -d postgres
+
+# Ждём 5 секунд и применяем схему
+sleep 5
+docker compose -f deploy/docker-compose.yml \
+  run --rm postgres \
+  psql postgresql://dpsradar:$(grep POSTGRES_PASSWORD deploy/.env | cut -d= -f2)@postgres:5432/dpsradar \
+  -c "SELECT 1"
+```
+
+> **Проще:** подождите шага 5 — API-сервер при первом старте пытается применить
+> миграции автоматически через drizzle. Если таблиц нет, первые запросы упадут,
+> но после `docker compose restart api` всё встанет на место.
+
+Или запустите миграцию явно:
+
+```bash
+docker compose -f deploy/docker-compose.yml \
+  --profile migrate run --rm migrate
+```
+
+### 5. Запустите всё
+
+```bash
+cd /opt/dps-radar
+docker compose -f deploy/docker-compose.yml up -d --build
+```
+
+Первый запуск занимает 3–5 минут (скачиваются образы, компилируется код).
+
+### 6. Проверьте
+
+```bash
+# Логи бэкенда
+docker compose -f deploy/docker-compose.yml logs -f api
+
+# Должно появиться:
+# INFO: Telegram webhook set successfully
+# INFO: Bot menu button configured
+# INFO: Server listening port=3000
+```
+
+Откройте `https://ваш-домен.ru` в браузере — должна открыться карта Благовещенска.
+
+Добавьте бота в групповой чат Telegram и напишите что-нибудь вроде:
+> «ДПС стоят на ул. Ленина»
+
+Бот ответит и метка появится на карте.
+
+---
+
+## Обновление
+
+```bash
+cd /opt/dps-radar
+git pull
+docker compose -f deploy/docker-compose.yml up -d --build
+```
+
+## Остановка
+
+```bash
+docker compose -f deploy/docker-compose.yml down
+```
+
+## Удаление (с данными)
+
+```bash
+docker compose -f deploy/docker-compose.yml down -v
+```
+
+---
+
+## Переменные окружения
+
+| Переменная | Описание |
+|-----------|----------|
+| `POSTGRES_PASSWORD` | Пароль базы данных |
+| `TELEGRAM_BOT_TOKEN` | Токен от @BotFather |
+| `PUBLIC_BASE_URL` | Ваш домен с HTTPS (напр. `https://dps.example.ru`) |
+| `SESSION_SECRET` | Случайная строка ≥ 32 символа |
+
+## Настройка бота в Telegram
+
+1. В @BotFather: `/setdomain` → укажите `ваш-домен.ru` (нужно для Web App кнопки)
+2. В @BotFather: `/mybots` → ваш бот → **Bot Settings** → **Menu Button** →
+   URL `https://ваш-домен.ru` (или настроится автоматически при старте)
+3. Добавьте бота в групповой чат с правами **чтения сообщений**
+
+---
+
+## Структура портов
+
+```
+Интернет (443 HTTPS)
+    ↓
+nginx на хосте (SSL-терминация, certbot)
+    ↓
+localhost:80
+    ↓
+Docker: nginx контейнер
+    ├── /api/* → api:3000 (Node.js)
+    └── /*     → статика Mini App
+```

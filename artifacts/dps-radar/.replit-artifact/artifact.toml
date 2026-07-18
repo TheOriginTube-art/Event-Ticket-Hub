@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/dps-radar/"
+title = "ДПС Радар"
+version = "1.0.0"
+id = "artifacts/dps-radar"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/dps-radar/" ]
+localPort = 22129
+
+[services.development]
+run = "pnpm --filter @workspace/dps-radar run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/dps-radar", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/dps-radar/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22129"
+BASE_PATH = "/dps-radar/"

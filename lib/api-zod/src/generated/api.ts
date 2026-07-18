@@ -1184,6 +1184,44 @@ export const DeleteOpenaiConversationResponse = zod.void()
 
 
 /**
+ * Возвращает события с last_seen_at не старше 2 часов.
+ * @summary Список активных событий ДПС и аварий на карте Благовещенска
+ */
+export const ListDpsEventsResponseItem = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['dps_post', 'accident']),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "address": zod.string(),
+  "author": zod.string(),
+  "lastSeenAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date(),
+  "minutesAgo": zod.number()
+})
+export const ListDpsEventsResponse = zod.array(ListDpsEventsResponseItem)
+
+
+/**
+ * @summary Статистика — количество активных постов ДПС и аварий
+ */
+export const GetDpsStatsResponse = zod.object({
+  "dpsPostCount": zod.number(),
+  "accidentCount": zod.number(),
+  "totalActive": zod.number()
+})
+
+
+/**
+ * @summary Telegram webhook — принимает обновления от бота
+ */
+export const HandleDpsTelegramWebhookBody = zod.object({
+  "update_id": zod.number().optional()
+})
+
+export const HandleDpsTelegramWebhookResponse = zod.unknown()
+
+
+/**
  * @summary Отправить сообщение и получить потоковый ответ ИИ
  */
 export const SendOpenaiMessageParams = zod.object({

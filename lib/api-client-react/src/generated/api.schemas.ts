@@ -411,6 +411,36 @@ export interface OpenaiMessageInput {
   content: string;
 }
 
+export type DpsEventType = typeof DpsEventType[keyof typeof DpsEventType];
+
+
+export const DpsEventType = {
+  dps_post: 'dps_post',
+  accident: 'accident',
+} as const;
+
+export interface DpsEvent {
+  id: number;
+  type: DpsEventType;
+  lat: number;
+  lng: number;
+  address: string;
+  author: string;
+  lastSeenAt: string;
+  createdAt: string;
+  minutesAgo: number;
+}
+
+export interface DpsStats {
+  dpsPostCount: number;
+  accidentCount: number;
+  totalActive: number;
+}
+
+export interface TelegramWebhookUpdate {
+  update_id?: number;
+}
+
 export type ListVenuesParams = {
 city?: string;
 };

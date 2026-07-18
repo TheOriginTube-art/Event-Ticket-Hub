@@ -34,6 +34,8 @@ tags:
     description: Object storage upload and serving endpoints.
   - name: openai
     description: OpenAI AI chat operations (admin-only AI consultant)
+  - name: dps-radar
+    description: ДПС Радар — Telegram bot events for Blagoveshchensk
 paths:
   /healthz:
     get:
@@ -1181,6 +1183,50 @@ paths:
           description: Удалён
         "404":
           description: Не найден
+  /dps-radar/events:
+    get:
+      operationId: listDpsEvents
+      tags: [dps-radar]
+      summary: Список активных событий ДПС и аварий на карте Благовещенска
+      description: Возвращает события с last_seen_at не старше 2 часов.
+      responses:
+        "200":
+          description: Список событий
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DpsEvent"
+
+  /dps-radar/stats:
+    get:
+      operationId: getDpsStats
+      tags: [dps-radar]
+      summary: Статистика — количество активных постов ДПС и аварий
+      responses:
+        "200":
+          description: Статистика
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DpsStats"
+
+  /dps-radar/telegram-webhook:
+    post:
+      operationId: handleDpsTelegramWebhook
+      tags: [dps-radar]
+      summary: Telegram webhook — принимает обновления от бота
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelegramWebhookUpdate"
+      responses:
+        "200":
+          description: OK
+
   /openai/conversations/{id}/messages:
     post:
       operationId: sendOpenaiMessage
@@ -1882,3 +1928,49 @@ components:
         content:
           type: string
           minLength: 1
+
+    DpsEventType:
+      type: string
+      enum: [dps_post, accident]
+
+    DpsEvent:
+      type: object
+      required: [id, type, lat, lng, address, author, lastSeenAt, createdAt, minutesAgo]
+      properties:
+        id:
+          type: integer
+        type:
+          $ref: "#/components/schemas/DpsEventType"
+        lat:
+          type: number
+        lng:
+          type: number
+        address:
+          type: string
+        author:
+          type: string
+        lastSeenAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        minutesAgo:
+          type: integer
+
+    DpsStats:
+      type: object
+      required: [dpsPostCount, accidentCount, totalActive]
+      properties:
+        dpsPostCount:
+          type: integer
+        accidentCount:
+          type: integer
+        totalActive:
+          type: integer
+
+    TelegramWebhookUpdate:
+      type: object
+      properties:
+        update_id:
+          type: integer
