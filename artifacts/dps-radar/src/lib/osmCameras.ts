@@ -1,11 +1,6 @@
 /**
- * Загружает камеры фиксации скорости через наш прокси-эндпоинт:
- * БД (постоянные) + OSM + Waze live.
- * Кэш в localStorage на 30 мин — Waze обновляется чаще OSM.
+ * Загружает камеры фиксации скорости из БД по видимой области карты.
  */
-
-const CACHE_KEY = 'osm_cameras_v2';
-const CACHE_TTL = 30 * 60 * 1000; // 30 мин
 
 export interface OsmCamera {
   id: number | string;
@@ -17,31 +12,37 @@ export interface OsmCamera {
   _source?: string;
 }
 
-interface CacheEntry { ts: number; city: string; cameras: OsmCamera[] }
-
-function loadCache(city: string): OsmCamera[] | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    const entry: CacheEntry = JSON.parse(raw);
-    if (entry.city !== city) return null;
-    if (Date.now() - entry.ts > CACHE_TTL) return null;
-    return entry.cameras;
-  } catch { return null; }
+export interface MapBounds {
+  minLat: number; maxLat: number;
+  minLng: number; maxLng: number;
 }
 
-function saveCache(city: string, cameras: OsmCamera[]) {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), city, cameras }));
-  } catch { /* ignore quota */ }
+// In-memory кэш: если bounds почти те же — не перезапрашиваем
+let boundsCache: { bounds: MapBounds; cameras: OsmCamera[]; ts: number } | null = null;
+const CACHE_TTL = 5 * 60 * 1000; // 5 мин
+
+function boundsChanged(a: MapBounds, b: MapBounds, threshold = 0.05): boolean {
+  return (
+    Math.abs(a.minLat - b.minLat) > threshold ||
+    Math.abs(a.maxLat - b.maxLat) > threshold ||
+    Math.abs(a.minLng - b.minLng) > threshold ||
+    Math.abs(a.maxLng - b.maxLng) > threshold
+  );
 }
 
-export async function fetchOsmCameras(city = 'blagoveshchensk'): Promise<OsmCamera[]> {
-  const cached = loadCache(city);
-  if (cached) return cached;
+export async function fetchCamerasInBounds(bounds: MapBounds): Promise<OsmCamera[]> {
+  if (
+    boundsCache &&
+    Date.now() - boundsCache.ts < CACHE_TTL &&
+    !boundsChanged(boundsCache.bounds, bounds)
+  ) {
+    return boundsCache.cameras;
+  }
 
   try {
-    const res = await fetch(`/api/dps-radar/osm-cameras?city=${encodeURIComponent(city)}`);
+    const { minLat, maxLat, minLng, maxLng } = bounds;
+    const url = `/api/dps-radar/cameras-in-bounds?minLat=${minLat}&maxLat=${maxLat}&minLng=${minLng}&maxLng=${maxLng}`;
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`API ${res.status}`);
 
     const json = await res.json() as {
@@ -52,19 +53,24 @@ export async function fetchOsmCameras(city = 'blagoveshchensk'): Promise<OsmCame
     };
 
     const cameras: OsmCamera[] = (json.elements ?? []).map(el => ({
-      id:        el.id,
-      lat:       el.lat,
-      lon:       el.lon,
-      name:      el.tags?.['name'] ?? el.tags?.['description'],
-      direction: el.tags?.['direction'] ? parseInt(el.tags['direction']) : undefined,
-      maxspeed:  el.tags?.['maxspeed'],
-      _source:   el._source,
+      id:       el.id,
+      lat:      el.lat,
+      lon:      el.lon,
+      name:     el.tags?.['name'],
+      maxspeed: el.tags?.['maxspeed'],
+      _source:  el._source,
     }));
 
-    saveCache(city, cameras);
+    boundsCache = { bounds, cameras, ts: Date.now() };
     return cameras;
   } catch (err) {
-    console.warn('[OSM cameras] fetch failed:', err);
-    return [];
+    console.warn('[cameras] fetch failed:', err);
+    return boundsCache?.cameras ?? [];
   }
+}
+
+// Обратная совместимость — старый вызов по городу больше не нужен,
+// но оставляем экспорт чтобы не ломать возможные другие импорты.
+export async function fetchOsmCameras(_city = 'blagoveshchensk'): Promise<OsmCamera[]> {
+  return [];
 }

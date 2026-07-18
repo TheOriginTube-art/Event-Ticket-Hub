@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, dpsEventsTable, chatSettingsTable, permanentCamerasTable } from "@workspace/db";
-import { gt, sql, eq, and, desc } from "drizzle-orm";
+import { gt, sql, eq, and, desc, between } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { getWebhookSecret } from "../lib/dpsWebhookSetup";
 
@@ -596,6 +596,39 @@ router.get("/dps-radar/osm-cameras", async (req, res) => {
   }
 
   return res.json({ elements: [...dbElements, ...osmElements, ...wazeElements] });
+});
+
+// ── Камеры по видимой области карты (без привязки к городу) ──────────────────
+router.get("/dps-radar/cameras-in-bounds", async (req, res) => {
+  const minLat = parseFloat(req.query.minLat as string);
+  const maxLat = parseFloat(req.query.maxLat as string);
+  const minLng = parseFloat(req.query.minLng as string);
+  const maxLng = parseFloat(req.query.maxLng as string);
+
+  if ([minLat, maxLat, minLng, maxLng].some(isNaN)) {
+    return res.status(400).json({ error: "minLat/maxLat/minLng/maxLng required" });
+  }
+
+  const cams = await db
+    .select()
+    .from(permanentCamerasTable)
+    .where(
+      and(
+        between(permanentCamerasTable.lat, minLat, maxLat),
+        between(permanentCamerasTable.lng, minLng, maxLng),
+      ),
+    )
+    .limit(500);
+
+  return res.json({
+    elements: cams.map(c => ({
+      id:      c.id,
+      lat:     c.lat,
+      lon:     c.lng,
+      _source: "db",
+      tags:    { name: c.description ?? "Камера фиксации скорости", maxspeed: "60" },
+    })),
+  });
 });
 
 // ── Добавить камеру с карты (POST) ────────────────────────────────────────────

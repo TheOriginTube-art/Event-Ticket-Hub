@@ -6,7 +6,7 @@ import { Navigation, Settings, MapPin, X, Check, Trash2, Camera, Play, Square } 
 import { useListDpsEvents, useGetDpsStats } from '@workspace/api-client-react';
 import { GeocodeResult, useGeocodeSearch } from '@/lib/nominatim';
 import { fetchOsrmRoute, calculateAvoidanceWaypoints, RouteResult } from '@/lib/osrm';
-import { fetchOsmCameras, OsmCamera } from '@/lib/osmCameras';
+import { fetchCamerasInBounds, OsmCamera } from '@/lib/osmCameras';
 
 function escHtml(str: string): string {
   return str
@@ -262,10 +262,43 @@ export default function MapPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gps]);
 
-  // ── Загрузка OSM камер ─────────────────────────────────────────────────────
-  React.useEffect(() => {
-    fetchOsmCameras(citySlug).then(cams => setOsmCameras(cams));
+  // ── Загрузка камер по видимой области ─────────────────────────────────────
+  const loadCamerasForCurrentBounds = React.useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const b = map.getBounds();
+    fetchCamerasInBounds({
+      minLat: b.getSouth(),
+      maxLat: b.getNorth(),
+      minLng: b.getWest(),
+      maxLng: b.getEast(),
+    }).then(cams => setOsmCameras(cams));
   }, []);
+
+  // Загрузка при монтировании (карта уже готова после первого useEffect)
+  React.useEffect(() => {
+    // Небольшая задержка — карта рендерится асинхронно
+    const t = setTimeout(loadCamerasForCurrentBounds, 300);
+    return () => clearTimeout(t);
+  }, [loadCamerasForCurrentBounds]);
+
+  // Перезагрузка при перемещении/зуме карты (дебаунс 600мс)
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const onMove = () => {
+      clearTimeout(timer);
+      timer = setTimeout(loadCamerasForCurrentBounds, 600);
+    };
+    map.on('moveend', onMove);
+    map.on('zoomend', onMove);
+    return () => {
+      map.off('moveend', onMove);
+      map.off('zoomend', onMove);
+      clearTimeout(timer);
+    };
+  }, [loadCamerasForCurrentBounds]);
 
   // ── Отрисовка OSM камер на карте ──────────────────────────────────────────
   React.useEffect(() => {
