@@ -4,6 +4,7 @@ import { seedIfEmpty, seedAdditionalEventsIfMissing, seedConcertsIfMissing } fro
 import { seedPaymentSettingsIfEmpty } from "./lib/paymentSettingsSeed";
 import { seedOsmCamerasIfEmpty } from "./lib/osmCamerasSeed";
 import { setupTelegramWebhook } from "./lib/dpsWebhookSetup";
+import { pool } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
 
@@ -17,6 +18,23 @@ const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
+}
+
+// ── Авто-миграция: создаём таблицы которых ещё нет ──────────────────────────
+try {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dps_direct_messages (
+      id         SERIAL PRIMARY KEY,
+      from_id    BIGINT NOT NULL REFERENCES telegram_users(telegram_id) ON DELETE CASCADE,
+      to_id      BIGINT NOT NULL REFERENCES telegram_users(telegram_id) ON DELETE CASCADE,
+      content    TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      read_at    TIMESTAMPTZ
+    )
+  `);
+  logger.info("Migrations OK");
+} catch (err) {
+  logger.warn({ err }, "Migration warning (non-fatal)");
 }
 
 try {
