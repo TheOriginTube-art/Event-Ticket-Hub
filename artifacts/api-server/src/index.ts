@@ -3,6 +3,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { seedIfEmpty, seedAdditionalEventsIfMissing, seedConcertsIfMissing } from "./seed";
 import { seedPaymentSettingsIfEmpty } from "./lib/paymentSettingsSeed";
+import { seedOsmCamerasIfEmpty } from "./lib/osmCamerasSeed";
 import { getStripeSync } from "./stripeClient";
 import { setupTelegramWebhook } from "./lib/dpsWebhookSetup";
 
@@ -90,6 +91,12 @@ try {
   await seedConcertsIfMissing();
 } catch (err) {
   logger.error({ err }, "Failed to seed concert events");
+}
+
+try {
+  await seedOsmCamerasIfEmpty();
+} catch (err) {
+  logger.warn({ err }, "OSM camera seeding failed (non-critical, will retry on next restart)");
 }
 
 app.listen(port, async (err) => {
