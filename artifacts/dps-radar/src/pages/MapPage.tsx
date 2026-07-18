@@ -31,31 +31,29 @@ function getCityFromUrl(): string {
   return CITY_CONFIG[city] ? city : DEFAULT_CITY;
 }
 
-// ─── Иконки ──────────────────────────────────────────────────────────────────
-const makeCircleIcon = (color: string, size: number, border = '#1e293b') =>
+// ─── Иконки (эмодзи) ─────────────────────────────────────────────────────────
+const makeEmojiIcon = (emoji: string, size = 28) =>
   L.divIcon({
-    className: 'custom-div-icon',
-    html: `<div style="background:${color};width:${size}px;height:${size}px;border-radius:50%;border:2.5px solid ${border};box-shadow:0 0 8px rgba(0,0,0,.5)"></div>`,
+    className: '',
+    html: `<div style="font-size:${size}px;line-height:1;filter:drop-shadow(0 1px 3px rgba(0,0,0,.7))">${emoji}</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -size / 2],
   });
 
-const dpsIcon      = makeCircleIcon('hsl(45,93%,47%)', 24);
-const cameraIcon   = makeCircleIcon('hsl(187,86%,53%)', 16);
-const accidentIcon = makeCircleIcon('hsl(0,84%,60%)', 22);
-const originIcon   = makeCircleIcon('#3b82f6', 20);
-const destIcon     = makeCircleIcon('#10b981', 20);
-const customIcon   = makeCircleIcon('#a855f7', 20, '#7c3aed');
+const dpsIcon          = makeEmojiIcon('🚔', 28);  // пост ДПС
+const cameraIcon       = makeEmojiIcon('📷', 22);  // камера
+const accidentIcon     = makeEmojiIcon('💥', 26);  // авария
+const originIcon       = makeEmojiIcon('🔵', 22);  // откуда
+const destIcon         = makeEmojiIcon('🏁', 24);  // куда
+const customIcon       = makeEmojiIcon('📍', 26);  // своя метка
 
 // Иконка текущей позиции пользователя (навигация)
 const userLocationIcon = L.divIcon({
   className: '',
-  html: `<div style="position:relative;width:24px;height:24px">
-    <div style="width:24px;height:24px;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 0 0 4px rgba(59,130,246,.35)"></div>
-  </div>`,
-  iconSize: [24, 24],
-  iconAnchor: [12, 12],
+  html: `<div style="font-size:28px;line-height:1;filter:drop-shadow(0 1px 4px rgba(0,0,0,.8))">🚗</div>`,
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
 });
 
 // ─── Своя метка (localStorage) ────────────────────────────────────────────────
@@ -740,19 +738,11 @@ export default function MapPage() {
             </div>
 
             {/* Легенда */}
-            <div className="flex items-center gap-3 mb-5 text-[11px] text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-amber-400 inline-block" /> Пост ДПС (24px)
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block" /> Камера (16px)
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> Авария (22px)
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-purple-500 inline-block" /> Моя метка
-              </span>
+            <div className="flex items-center gap-3 mb-5 text-[11px] text-muted-foreground flex-wrap">
+              <span className="flex items-center gap-1">🚔 Пост ДПС</span>
+              <span className="flex items-center gap-1">📷 Камера</span>
+              <span className="flex items-center gap-1">💥 Авария</span>
+              <span className="flex items-center gap-1">📍 Моя метка</span>
             </div>
 
             {/* Тогглы */}
