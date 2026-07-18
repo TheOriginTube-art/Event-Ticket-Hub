@@ -364,12 +364,26 @@ router.post("/dps-radar/telegram-webhook", async (req, res): Promise<void> => {
       }
     }
 
-    // /start command
+    // /start command (с возможным deep-link)
     if (text.startsWith("/start")) {
       const existingCity = await getChatCity(chatId);
+      const param = text.split(" ")[1] ?? "";
+
+      // deep-link: invite_<userId> — зарегистрировать пользователя и отправить уведомление
+      if (param.startsWith("invite_")) {
+        const inviterId = parseInt(param.replace("invite_", ""), 10);
+        if (!isNaN(inviterId) && inviterId !== chatId) {
+          // Уведомляем того, кто пригласил, что новый юзер зашёл через ссылку
+          await sendTelegramMessage(
+            inviterId,
+            `🎉 Пользователь перешёл по вашей пригласительной ссылке в ДПС Радар!\n\nКогда он зарегистрируется в приложении, вы сможете добавить его в друзья по username.`,
+          );
+        }
+      }
+
       await sendTelegramMessage(
         chatId,
-        "👮 <b>ДПС Радар</b> — карта постов ДПС и аварий\n\nДобавьте меня в групповой чат и сообщайте о постах ДПС и авариях — метки появятся на карте автоматически.",
+        "👮 <b>ДПС Радар</b> — карта постов ДПС и аварий\n\nОткройте приложение, чтобы видеть посты ДПС, аварии и локации друзей на карте:",
         makeMiniAppButton(existingCity),
       );
       return;

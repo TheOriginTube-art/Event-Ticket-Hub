@@ -1,19 +1,27 @@
 /**
  * Profile, friends, and real-time location sharing for DPS Radar Telegram Mini App.
  */
-import { Router, type IRouter } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import crypto from "crypto";
 import { db, telegramUsersTable, friendshipsTable, dpsEventsTable } from "@workspace/db";
 import { eq, or, and, count, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
-const router: IRouter = Router();
+const router = Router();
+
+interface TgUserPayload {
+  id: number;
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+  photo_url?: string;
+}
 
 // ── Telegram initData verification ───────────────────────────────────────────
 function verifyInitData(
   initData: string,
   botToken: string,
-): { user: Record<string, unknown> } | null {
+): { user: TgUserPayload } | null {
   try {
     const params = new URLSearchParams(initData);
     const hash = params.get("hash");
@@ -38,56 +46,51 @@ function verifyInitData(
 
     const userRaw = params.get("user");
     if (!userRaw) return null;
-    return { user: JSON.parse(userRaw) as Record<string, unknown> };
+    return { user: JSON.parse(userRaw) as TgUserPayload };
   } catch {
     return null;
   }
 }
 
 // Middleware — parse & verify initData, attach tgUser to req
-function requireTgUser(
-  req: Parameters<Parameters<IRouter["use"]>[0]>[0],
-  res: Parameters<Parameters<IRouter["use"]>[0]>[1],
-  next: Parameters<Parameters<IRouter["use"]>[0]>[2],
-) {
+function requireTgUser(req: Request, res: Response, next: NextFunction): void {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     // Dev-mode: accept explicit telegramId header for curl testing
     const devId = req.headers["x-dev-telegram-id"];
     if (devId) {
-      (req as never as Record<string, unknown>).tgUser = { id: Number(devId), first_name: "Dev" };
-      return next();
+      (req as Request & { tgUser: TgUserPayload }).tgUser = { id: Number(devId), first_name: "Dev" };
+      next();
+      return;
     }
-    return res.status(503).json({ error: "Bot token not configured" });
+    res.status(503).json({ error: "Bot token not configured" });
+    return;
   }
 
   const initData =
     (req.body as Record<string, string>)?.initData ??
-    (req.headers["x-init-data"] as string);
+    (req.headers["x-init-data"] as string) ??
+    (req.headers["x-telegram-init-data"] as string);
 
   if (!initData) {
     logger.warn("profile auth: initData missing");
-    return res.status(401).json({ error: "initData required" });
+    res.status(401).json({ error: "initData required" });
+    return;
   }
 
   const parsed = verifyInitData(initData, token);
   if (!parsed) {
     logger.warn({ initDataLen: initData.length, initDataSnippet: initData.slice(0, 60) }, "profile auth: HMAC failed");
-    return res.status(401).json({ error: "Invalid Telegram initData" });
+    res.status(401).json({ error: "Invalid Telegram initData" });
+    return;
   }
 
-  (req as never as Record<string, unknown>).tgUser = parsed.user;
+  (req as Request & { tgUser: TgUserPayload }).tgUser = parsed.user;
   next();
 }
 
-function getTgUser(req: Parameters<Parameters<IRouter["use"]>[0]>[0]) {
-  return (req as never as Record<string, unknown>).tgUser as {
-    id: number;
-    username?: string;
-    first_name?: string;
-    last_name?: string;
-    photo_url?: string;
-  };
+function getTgUser(req: Request): TgUserPayload {
+  return (req as Request & { tgUser: TgUserPayload }).tgUser;
 }
 
 // ── POST /profile/sync — upsert user from initData ───────────────────────────
@@ -274,7 +277,7 @@ router.post("/friends/request", requireTgUser, async (req, res) => {
 // ── POST /friends/:id/accept — accept a pending request ──────────────────────
 router.post("/friends/:id/accept", requireTgUser, async (req, res) => {
   const u = getTgUser(req);
-  const id = parseInt(req.params.id);
+  const id = parseInt(String(req.params.id));
 
   const [fs] = await db
     .select()
@@ -321,7 +324,7 @@ router.post("/friends/:id/accept", requireTgUser, async (req, res) => {
 // ── DELETE /friends/:id — decline or remove ───────────────────────────────────
 router.delete("/friends/:id", requireTgUser, async (req, res) => {
   const u = getTgUser(req);
-  const id = parseInt(req.params.id);
+  const id = parseInt(String(req.params.id));
 
   await db
     .delete(friendshipsTable)
