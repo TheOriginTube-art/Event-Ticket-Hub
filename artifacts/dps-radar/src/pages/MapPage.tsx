@@ -1277,15 +1277,6 @@ export default function MapPage() {
               )}
             </button>
 
-            {/* Рейтинг */}
-            <button
-              onClick={() => setShowLeaderboard(true)}
-              className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border bg-yellow-500/10 border-yellow-500/30 text-yellow-400 active:bg-yellow-500/25 transition-colors"
-            >
-              <Trophy className="w-3.5 h-3.5 shrink-0" />
-              <span>Рейтинг</span>
-            </button>
-
             <div className="flex-1" />
 
             {/* Метка */}
@@ -1295,14 +1286,22 @@ export default function MapPage() {
                 setPendingCoords(null);
                 setIsAddingMarker(true);
               }}
-              className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border transition-colors ${
+              className={`flex items-center justify-center w-9 h-9 rounded-xl border transition-colors shrink-0 ${
                 isAddingMarker
                   ? 'bg-purple-600 border-purple-500 text-white'
                   : 'bg-white/5 border-white/10 text-purple-400 active:bg-white/10'
               }`}
+              title={isAddingMarker ? 'Нажмите на карту' : 'Добавить метку'}
             >
-              <MapPin className="w-3.5 h-3.5 shrink-0" />
-              <span>{isAddingMarker ? 'Нажмите' : 'Метка'}</span>
+              <MapPin className="w-4 h-4 shrink-0" />
+            </button>
+
+            {/* Рейтинг */}
+            <button
+              onClick={() => setShowLeaderboard(true)}
+              className="flex items-center justify-center w-9 h-9 rounded-xl bg-yellow-500/10 border border-yellow-500/30 active:bg-yellow-500/20 transition-colors shrink-0"
+            >
+              <Trophy className="w-4 h-4 text-yellow-400" />
             </button>
 
             {/* Настройки */}
