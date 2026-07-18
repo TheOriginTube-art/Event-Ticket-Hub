@@ -31,3 +31,4 @@ export * from "./conversations";
 export * from "./messages";
 export * from "./dpsEvents";
 export * from "./chatSettings";
+export * from "./permanentCameras";

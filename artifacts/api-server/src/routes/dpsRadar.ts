@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, dpsEventsTable, chatSettingsTable } from "@workspace/db";
-import { gt, sql, eq, and } from "drizzle-orm";
+import { db, dpsEventsTable, chatSettingsTable, permanentCamerasTable } from "@workspace/db";
+import { gt, sql, eq, and, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { getWebhookSecret } from "../lib/dpsWebhookSetup";
 
@@ -298,6 +298,28 @@ router.post("/dps-radar/telegram-webhook", async (req, res): Promise<void> => {
           makeMiniAppButton(validSlug),
         );
       }
+
+      // ── Подтверждение добавления камеры ─────────────────────────────────
+      if (callbackData.startsWith("add_cam:") && callbackChatId) {
+        const parts = callbackData.split(":");
+        // format: add_cam:yes/no:lat:lng:city:author
+        const confirm = parts[1];
+        await answerCallbackQuery(callbackQuery.id as string);
+        if (confirm === "yes") {
+          const lat  = parseFloat(parts[2]);
+          const lng  = parseFloat(parts[3]);
+          const city = parts[4] ?? DEFAULT_CITY;
+          const addedBy = decodeURIComponent(parts[5] ?? "unknown");
+          await db.insert(permanentCamerasTable).values({ lat, lng, city, addedBy });
+          await sendTelegramMessage(
+            callbackChatId,
+            `📷 <b>Камера добавлена на карту!</b>\n📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+          );
+        } else {
+          await sendTelegramMessage(callbackChatId, "Отменено.");
+        }
+      }
+
       return;
     }
 
@@ -351,6 +373,46 @@ router.post("/dps-radar/telegram-webhook", async (req, res): Promise<void> => {
         chatId,
         "🏙 Выберите город для этого чата:",
         makeCitySelectionKeyboard(),
+      );
+      return;
+    }
+
+    // /камеры — список постоянных камер
+    if (text.startsWith("/камеры") || text.startsWith("/cameras")) {
+      const chatCity = await getChatCity(chatId);
+      const cams = await db
+        .select()
+        .from(permanentCamerasTable)
+        .where(eq(permanentCamerasTable.city, chatCity))
+        .orderBy(desc(permanentCamerasTable.createdAt))
+        .limit(20);
+      if (!cams.length) {
+        await sendTelegramMessage(chatId, "📷 Камер пока нет. Пришлите геолокацию камеры, чтобы добавить.");
+      } else {
+        const lines = cams.map((c, i) =>
+          `${i + 1}. 📍 ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} — ${c.description} (добавил ${c.addedBy})`
+        ).join("\n");
+        await sendTelegramMessage(chatId, `📷 <b>Камеры на карте (${cams.length}):</b>\n\n${lines}`);
+      }
+      return;
+    }
+
+    // ── Геолокация — предлагаем добавить камеру ──────────────────────────────
+    const location = message.location as { latitude: number; longitude: number } | undefined;
+    if (location) {
+      const chatCity = await getChatCity(chatId);
+      const encodedAuthor = encodeURIComponent(author);
+      await sendTelegramMessage(
+        chatId,
+        `📷 Добавить камеру фиксации скорости в точке <b>${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}</b>?`,
+        {
+          reply_markup: JSON.stringify({
+            inline_keyboard: [[
+              { text: "✅ Да, добавить камеру", callback_data: `add_cam:yes:${location.latitude}:${location.longitude}:${chatCity}:${encodedAuthor}` },
+              { text: "❌ Нет", callback_data: `add_cam:no:0:0:${chatCity}:${encodedAuthor}` },
+            ]],
+          }),
+        },
       );
       return;
     }
@@ -441,24 +503,39 @@ let osmCache: { ts: number; data: unknown } | null = null;
 const OSM_TTL = 24 * 60 * 60 * 1000;
 
 router.get("/dps-radar/osm-cameras", async (_req, res) => {
+  // Постоянные камеры из нашей БД
+  const dbCams = await db.select().from(permanentCamerasTable).orderBy(desc(permanentCamerasTable.createdAt));
+  const dbElements = dbCams.map(c => ({
+    id: c.id,
+    lat: c.lat,
+    lon: c.lng,
+    _source: "db" as const,
+    tags: { name: c.description, "added_by": c.addedBy, city: c.city },
+  }));
+
+  // OSM камеры (кэш 24ч)
+  let osmElements: unknown[] = [];
   try {
     if (osmCache && Date.now() - osmCache.ts < OSM_TTL) {
-      return res.json(osmCache.data);
+      osmElements = (osmCache.data as { elements: unknown[] }).elements ?? [];
+    } else {
+      const resp = await fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `data=${encodeURIComponent(OSM_QUERY)}`,
+        signal: AbortSignal.timeout(25_000),
+      });
+      if (resp.ok) {
+        const json = await resp.json() as { elements: unknown[] };
+        osmCache = { ts: Date.now(), data: json };
+        osmElements = json.elements ?? [];
+      }
     }
-    const resp = await fetch("https://overpass-api.de/api/interpreter", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: `data=${encodeURIComponent(OSM_QUERY)}`,
-      signal: AbortSignal.timeout(25_000),
-    });
-    if (!resp.ok) throw new Error(`Overpass ${resp.status}`);
-    const json = await resp.json();
-    osmCache = { ts: Date.now(), data: json };
-    return res.json(json);
   } catch (err) {
-    logger.warn({ err }, "OSM cameras proxy failed");
-    return res.status(502).json({ elements: [] });
+    logger.warn({ err }, "OSM cameras proxy failed, serving DB cameras only");
   }
+
+  return res.json({ elements: [...dbElements, ...osmElements] });
 });
 
 export default router;
