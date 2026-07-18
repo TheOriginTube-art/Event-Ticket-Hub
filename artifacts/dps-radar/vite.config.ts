@@ -32,10 +32,11 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    runtimeErrorOverlay(),
     ...(process.env.NODE_ENV !== 'production' &&
     process.env.REPL_ID !== undefined
       ? [
+          // Dev-only overlays — shown only inside Replit IDE, not to Telegram users
+          runtimeErrorOverlay(),
           await import('@replit/vite-plugin-cartographer').then((m) =>
             m.cartographer({
               root: path.resolve(import.meta.dirname, '..'),
@@ -76,6 +77,11 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+    },
+    // Disable the error overlay — users open the app inside Telegram and
+    // the dev overlay is confusing and unsightly for end users
+    hmr: {
+      overlay: false,
     },
     fs: {
       strict: true,
