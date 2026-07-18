@@ -164,10 +164,20 @@ export default function MapPage() {
   const [addUsername, setAddUsername] = React.useState('');
   const [addStatus,   setAddStatus]   = React.useState<'idle'|'loading'|'ok'|'notfound'|'error'>('idle');
   const [addMsg,      setAddMsg]      = React.useState('');
+  const [syncStatus,  setSyncStatus]  = React.useState<'idle'|'syncing'|'ok'|'error'>('idle');
+  const [syncError,   setSyncError]   = React.useState('');
   const friendLocLayerRef = React.useRef<L.LayerGroup>(new L.LayerGroup());
 
   const BASE = (import.meta.env.BASE_URL as string) ?? '/dps-radar/';
-  const tgInitData = React.useMemo(() => (window as Record<string,any>).Telegram?.WebApp?.initData as string | undefined, []);
+
+  // Читаем initData — у Telegram он синхронно доступен, но берём через ref
+  // чтобы не создавать лишних зависимостей в useEffect
+  const tgInitData = React.useMemo(() => {
+    const tg = (window as Record<string,any>).Telegram?.WebApp;
+    const d = tg?.initData as string | undefined;
+    // Пустая строка тоже не годится
+    return d && d.length > 0 ? d : undefined;
+  }, []);
 
   // Репортинг события
   const [showReportDialog, setShowReportDialog] = React.useState(false);
@@ -384,18 +394,38 @@ export default function MapPage() {
     el.style.cursor = isAddingMarker ? 'crosshair' : '';
   }, [isAddingMarker]);
 
-  // ── Профиль: синхронизация при старте ────────────────────────────────────
-  React.useEffect(() => {
-    if (!tgInitData) return;
-    fetch(`${BASE}api/dps-radar/profile/sync`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ initData: tgInitData }),
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then((p: TgProfile | null) => { if (p) { setTgProfile(p); setShareLocation(p.shareLocation); } })
-      .catch(() => {});
-  }, [tgInitData]);
+  // ── Профиль: синхронизация ────────────────────────────────────────────────
+  const syncProfile = React.useCallback(async () => {
+    if (!tgInitData) {
+      setSyncStatus('error');
+      setSyncError('Откройте приложение через Telegram-бота, а не прямой ссылкой.');
+      return;
+    }
+    setSyncStatus('syncing');
+    setSyncError('');
+    try {
+      const r = await fetch(`${BASE}api/dps-radar/profile/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tgInitData }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({})) as { error?: string };
+        setSyncStatus('error');
+        setSyncError(j.error ?? `Ошибка сервера ${r.status}`);
+        return;
+      }
+      const p = await r.json() as TgProfile;
+      setTgProfile(p);
+      setShareLocation(p.shareLocation);
+      setSyncStatus('ok');
+    } catch (e) {
+      setSyncStatus('error');
+      setSyncError('Нет соединения с сервером.');
+    }
+  }, [tgInitData, BASE]);
+
+  React.useEffect(() => { void syncProfile(); }, [syncProfile]);
 
   // ── GPS маяк: обновление позиции каждые 30 сек ────────────────────────────
   React.useEffect(() => {
@@ -1410,8 +1440,31 @@ export default function MapPage() {
                 </div>
               </>
             ) : (
-              <div className="text-center py-10 text-muted-foreground text-sm">
-                Откройте приложение через Telegram для входа в профиль
+              <div className="flex flex-col items-center gap-4 py-8">
+                {syncStatus === 'syncing' && (
+                  <>
+                    <div className="w-10 h-10 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+                    <span className="text-sm text-muted-foreground">Подключение к Telegram…</span>
+                  </>
+                )}
+                {syncStatus === 'error' && (
+                  <>
+                    <div className="text-3xl">⚠️</div>
+                    <div className="text-center">
+                      <div className="text-sm font-semibold text-red-400 mb-1">Не удалось войти</div>
+                      <div className="text-xs text-muted-foreground px-4">{syncError}</div>
+                    </div>
+                    <Button
+                      className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                      onClick={() => void syncProfile()}
+                    >
+                      <User className="w-4 h-4" /> Войти заново
+                    </Button>
+                  </>
+                )}
+                {syncStatus === 'idle' && (
+                  <div className="text-sm text-muted-foreground">Загрузка…</div>
+                )}
               </div>
             )}
           </div>

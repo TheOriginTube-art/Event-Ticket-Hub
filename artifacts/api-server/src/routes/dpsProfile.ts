@@ -65,10 +65,16 @@ function requireTgUser(
     (req.body as Record<string, string>)?.initData ??
     (req.headers["x-init-data"] as string);
 
-  if (!initData) return res.status(401).json({ error: "initData required" });
+  if (!initData) {
+    logger.warn("profile auth: initData missing");
+    return res.status(401).json({ error: "initData required" });
+  }
 
   const parsed = verifyInitData(initData, token);
-  if (!parsed) return res.status(401).json({ error: "Invalid Telegram initData" });
+  if (!parsed) {
+    logger.warn({ initDataLen: initData.length, initDataSnippet: initData.slice(0, 60) }, "profile auth: HMAC failed");
+    return res.status(401).json({ error: "Invalid Telegram initData" });
+  }
 
   (req as never as Record<string, unknown>).tgUser = parsed.user;
   next();
