@@ -58,8 +58,20 @@ EOF
 # Убираем дефолтный сайт, включаем наш
 rm -f /etc/nginx/sites-enabled/default
 ln -sf /etc/nginx/sites-available/dps-radar /etc/nginx/sites-enabled/dps-radar
-nginx -t && systemctl reload nginx
-info "nginx перезагружен"
+
+# Освобождаем порт 80 если занят не nginx-ом
+if ss -tlnp | grep -q ':80 ' && ! systemctl is-active --quiet nginx; then
+    warn "Порт 80 занят. Останавливаю Apache/другие сервисы..."
+    systemctl stop apache2 2>/dev/null || true
+    systemctl disable apache2 2>/dev/null || true
+    fuser -k 80/tcp 2>/dev/null || true
+    sleep 1
+fi
+
+nginx -t
+systemctl enable nginx
+systemctl start nginx 2>/dev/null || systemctl restart nginx
+info "nginx запущен"
 
 # ── 3. SSL-сертификат ─────────────────────────────────────────────────────────
 if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
