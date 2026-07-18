@@ -324,7 +324,7 @@ export default function MapPage() {
 
   // ── Proximity: ближайшая камера (все типы, включая ремень/стоп-линию) ─────
   React.useEffect(() => {
-    if (!gps) { setNearestCam(null); return; }
+    if (!gps || !settings.showCameras) { setNearestCam(null); return; }
 
     let best: NearestCam | null = null;
 
