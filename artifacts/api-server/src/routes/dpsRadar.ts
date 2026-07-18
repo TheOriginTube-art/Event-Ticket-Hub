@@ -1,14 +1,27 @@
 import { Router, type IRouter } from "express";
-import { db, dpsEventsTable } from "@workspace/db";
+import { db, dpsEventsTable, chatSettingsTable } from "@workspace/db";
 import { gt, sql, eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { getWebhookSecret } from "../lib/dpsWebhookSetup";
 
 const router: IRouter = Router();
 
-// Blagoveshchensk center for geocoding bias
-const BLAGOVESHCHENSK_LAT = 50.2906;
-const BLAGOVESHCHENSK_LNG = 127.5272;
+// City config — add more cities here as needed
+const CITIES: Record<string, { name: string; lat: number; lng: number; viewbox: string }> = {
+  blagoveshchensk: {
+    name: "Благовещенск",
+    lat: 50.2906,
+    lng: 127.5272,
+    viewbox: "127.3,50.15,127.75,50.45",
+  },
+  khabarovsk: {
+    name: "Хабаровск",
+    lat: 48.4827,
+    lng: 135.0839,
+    viewbox: "134.7,48.3,135.4,48.7",
+  },
+};
+const DEFAULT_CITY = "blagoveshchensk";
 
 // Events expire after 2 hours (in ms)
 const EVENT_TTL_MS = 2 * 60 * 60 * 1000;
@@ -56,16 +69,22 @@ function extractAddressHint(text: string): string {
   return capWords?.[0] ?? "";
 }
 
-async function geocodeAddress(hint: string): Promise<{ lat: number; lng: number; display: string } | null> {
+async function geocodeAddress(
+  hint: string,
+  citySlug: string,
+): Promise<{ lat: number; lng: number; display: string } | null> {
   if (!hint) return null;
-  const query = `Благовещенск ${hint}`;
+  const city = CITIES[citySlug] ?? CITIES[DEFAULT_CITY];
+  const query = `${city.name} ${hint}`;
   const url = new URL("https://nominatim.openstreetmap.org/search");
   url.searchParams.set("q", query);
   url.searchParams.set("format", "json");
   url.searchParams.set("limit", "1");
   url.searchParams.set("countrycodes", "ru");
-  url.searchParams.set("viewbox", "127.3,50.15,127.75,50.45");
-  url.searchParams.set("bounded", "1");
+  if (city.viewbox) {
+    url.searchParams.set("viewbox", city.viewbox);
+    url.searchParams.set("bounded", "1");
+  }
 
   try {
     const res = await fetch(url.toString(), {
@@ -102,33 +121,90 @@ async function sendTelegramMessage(
   }
 }
 
-function getMiniAppUrl(): string {
+async function answerCallbackQuery(callbackQueryId: string): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callback_query_id: callbackQueryId }),
+    });
+  } catch (err) {
+    logger.warn({ err }, "Failed to answer callback query");
+  }
+}
+
+function getMiniAppUrl(citySlug?: string): string {
   const domain =
     process.env.PUBLIC_BASE_URL ??
     (process.env.REPLIT_DOMAINS
       ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
       : "https://example.com");
-  return `${domain}/dps-radar/`;
+  const base = `${domain}/dps-radar/`;
+  return citySlug ? `${base}?city=${encodeURIComponent(citySlug)}` : base;
 }
 
-function makeMiniAppButton() {
+function makeMiniAppButton(citySlug?: string) {
   return {
     reply_markup: JSON.stringify({
       inline_keyboard: [
-        [{ text: "🗺 Открыть карту ДПС Радар", web_app: { url: getMiniAppUrl() } }],
+        [{ text: "🗺 Открыть карту ДПС Радар", web_app: { url: getMiniAppUrl(citySlug) } }],
       ],
     }),
   };
 }
 
+function makeCitySelectionKeyboard() {
+  return {
+    reply_markup: JSON.stringify({
+      inline_keyboard: [
+        [
+          { text: "🏙 Благовещенск", callback_data: "set_city:blagoveshchensk" },
+          { text: "🏙 Хабаровск", callback_data: "set_city:khabarovsk" },
+        ],
+        [
+          { text: "📍 Другой город", callback_data: "set_city:blagoveshchensk" },
+        ],
+      ],
+    }),
+  };
+}
+
+async function getChatCity(chatId: number): Promise<string> {
+  const rows = await db
+    .select()
+    .from(chatSettingsTable)
+    .where(eq(chatSettingsTable.chatId, chatId))
+    .limit(1);
+  return rows[0]?.city ?? DEFAULT_CITY;
+}
+
+async function saveChatCity(chatId: number, citySlug: string): Promise<void> {
+  await db
+    .insert(chatSettingsTable)
+    .values({ chatId, city: citySlug, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: chatSettingsTable.chatId,
+      set: { city: citySlug, updatedAt: new Date() },
+    });
+}
+
 // GET /api/dps-radar/events
-router.get("/dps-radar/events", async (_req, res): Promise<void> => {
+router.get("/dps-radar/events", async (req, res): Promise<void> => {
   try {
+    const citySlug = (req.query.city as string) || DEFAULT_CITY;
     const cutoff = new Date(Date.now() - EVENT_TTL_MS);
+
     const events = await db
       .select()
       .from(dpsEventsTable)
-      .where(gt(dpsEventsTable.lastSeenAt, cutoff))
+      .where(
+        and(
+          gt(dpsEventsTable.lastSeenAt, cutoff),
+          eq(dpsEventsTable.city, citySlug),
+        ),
+      )
       .orderBy(sql`${dpsEventsTable.lastSeenAt} DESC`);
 
     const now = Date.now();
@@ -138,6 +214,7 @@ router.get("/dps-radar/events", async (_req, res): Promise<void> => {
       lat: e.lat,
       lng: e.lng,
       address: e.address,
+      city: e.city,
       author: e.author,
       lastSeenAt: e.lastSeenAt.toISOString(),
       createdAt: e.createdAt.toISOString(),
@@ -152,13 +229,19 @@ router.get("/dps-radar/events", async (_req, res): Promise<void> => {
 });
 
 // GET /api/dps-radar/stats
-router.get("/dps-radar/stats", async (_req, res): Promise<void> => {
+router.get("/dps-radar/stats", async (req, res): Promise<void> => {
   try {
+    const citySlug = (req.query.city as string) || DEFAULT_CITY;
     const cutoff = new Date(Date.now() - EVENT_TTL_MS);
     const rows = await db
       .select({ type: dpsEventsTable.type, cnt: sql<number>`count(*)::int` })
       .from(dpsEventsTable)
-      .where(gt(dpsEventsTable.lastSeenAt, cutoff))
+      .where(
+        and(
+          gt(dpsEventsTable.lastSeenAt, cutoff),
+          eq(dpsEventsTable.city, citySlug),
+        ),
+      )
       .groupBy(dpsEventsTable.type);
 
     let dpsPostCount = 0;
@@ -196,7 +279,29 @@ router.post("/dps-radar/telegram-webhook", async (req, res): Promise<void> => {
   const update = req.body as Record<string, unknown>;
 
   try {
-    // Handle /start and new_chat_members (bot added to group)
+    // ── Handle callback_query (city selection buttons) ──────────────────────
+    const callbackQuery = update.callback_query as Record<string, unknown> | undefined;
+    if (callbackQuery) {
+      const callbackData = (callbackQuery.data as string) ?? "";
+      const callbackMsg = callbackQuery.message as Record<string, unknown> | undefined;
+      const callbackChatId = (callbackMsg?.chat as Record<string, unknown>)?.id as number;
+
+      if (callbackData.startsWith("set_city:") && callbackChatId) {
+        const citySlug = callbackData.replace("set_city:", "");
+        const validSlug = CITIES[citySlug] ? citySlug : DEFAULT_CITY;
+        await saveChatCity(callbackChatId, validSlug);
+        await answerCallbackQuery(callbackQuery.id as string);
+        const cityName = CITIES[validSlug]?.name ?? validSlug;
+        await sendTelegramMessage(
+          callbackChatId,
+          `✅ Город установлен: <b>${cityName}</b>\n\nТеперь пишите в чат о постах ДПС и авариях — они появятся на карте. Откройте карту:`,
+          makeMiniAppButton(validSlug),
+        );
+      }
+      return;
+    }
+
+    // ── Handle regular messages ─────────────────────────────────────────────
     const message = update.message as Record<string, unknown> | undefined;
     if (!message) return;
 
@@ -221,8 +326,8 @@ router.post("/dps-radar/telegram-webhook", async (req, res): Promise<void> => {
         if (isBotAdded) {
           await sendTelegramMessage(
             chatId,
-            "👮 <b>ДПС Радар активирован!</b>\n\nПишите в чат о постах ДПС и авариях — я буду добавлять их на карту. Пример:\n• «ДПС на Ленина/Горького»\n• «Авария на пр. Победы 50»\n\nОткройте карту, чтобы видеть все активные метки:",
-            makeMiniAppButton(),
+            "👮 <b>ДПС Радар активирован!</b>\n\nВыберите город для этого чата:",
+            makeCitySelectionKeyboard(),
           );
           return;
         }
@@ -231,10 +336,21 @@ router.post("/dps-radar/telegram-webhook", async (req, res): Promise<void> => {
 
     // /start command
     if (text.startsWith("/start")) {
+      const existingCity = await getChatCity(chatId);
       await sendTelegramMessage(
         chatId,
-        "👮 <b>ДПС Радар</b> — карта постов ДПС и аварий Благовещенска\n\nДобавьте меня в групповой чат и сообщайте о постах ДПС и авариях — метки появятся на карте автоматически.\n\nОткройте мини-приложение с картой:",
-        makeMiniAppButton(),
+        "👮 <b>ДПС Радар</b> — карта постов ДПС и аварий\n\nДобавьте меня в групповой чат и сообщайте о постах ДПС и авариях — метки появятся на карте автоматически.",
+        makeMiniAppButton(existingCity),
+      );
+      return;
+    }
+
+    // /city command — change city
+    if (text.startsWith("/city")) {
+      await sendTelegramMessage(
+        chatId,
+        "🏙 Выберите город для этого чата:",
+        makeCitySelectionKeyboard(),
       );
       return;
     }
@@ -246,16 +362,20 @@ router.post("/dps-radar/telegram-webhook", async (req, res): Promise<void> => {
     const eventType = detectEventType(text);
     if (!eventType) return;
 
+    // Get this chat's city
+    const chatCity = await getChatCity(chatId);
+    const cityConfig = CITIES[chatCity] ?? CITIES[DEFAULT_CITY];
+
     // Extract address hint
     const addressHint = extractAddressHint(text);
 
     // Geocode
-    let lat = BLAGOVESHCHENSK_LAT + (Math.random() - 0.5) * 0.02;
-    let lng = BLAGOVESHCHENSK_LNG + (Math.random() - 0.5) * 0.02;
-    let displayAddress = addressHint || "Благовещенск";
+    let lat = cityConfig.lat + (Math.random() - 0.5) * 0.02;
+    let lng = cityConfig.lng + (Math.random() - 0.5) * 0.02;
+    let displayAddress = addressHint || cityConfig.name;
 
     if (addressHint) {
-      const geo = await geocodeAddress(addressHint);
+      const geo = await geocodeAddress(addressHint, chatCity);
       if (geo) {
         lat = geo.lat;
         lng = geo.lng;
@@ -263,7 +383,7 @@ router.post("/dps-radar/telegram-webhook", async (req, res): Promise<void> => {
       }
     }
 
-    // Check for nearby existing event to merge/update
+    // Check for nearby existing event to merge/update (within same city)
     const cutoff = new Date(Date.now() - EVENT_TTL_MS);
     const nearbyEvents = await db
       .select()
@@ -272,6 +392,7 @@ router.post("/dps-radar/telegram-webhook", async (req, res): Promise<void> => {
         and(
           gt(dpsEventsTable.lastSeenAt, cutoff),
           eq(dpsEventsTable.type, eventType),
+          eq(dpsEventsTable.city, chatCity),
         ),
       );
 
@@ -295,17 +416,18 @@ router.post("/dps-radar/telegram-webhook", async (req, res): Promise<void> => {
         lat,
         lng,
         address: displayAddress,
+        city: chatCity,
         chatId,
         author,
         lastSeenAt: new Date(),
       });
-      logger.info({ eventType, displayAddress }, "DPS event created");
+      logger.info({ eventType, displayAddress, city: chatCity }, "DPS event created");
     }
 
     // Reply with a map button
     const typeLabel = eventType === "dps_post" ? "🚔 Пост ДПС" : "🚗💥 Авария";
     const replyText = `${typeLabel} добавлен на карту: <b>${displayAddress}</b>\nМетка активна 2 часа.`;
-    await sendTelegramMessage(chatId, replyText, makeMiniAppButton());
+    await sendTelegramMessage(chatId, replyText, makeMiniAppButton(chatCity));
   } catch (err) {
     logger.error({ err }, "Error processing Telegram webhook update");
   }

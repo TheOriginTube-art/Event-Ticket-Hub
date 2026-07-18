@@ -1187,8 +1187,16 @@ paths:
     get:
       operationId: listDpsEvents
       tags: [dps-radar]
-      summary: Список активных событий ДПС и аварий на карте Благовещенска
-      description: Возвращает события с last_seen_at не старше 2 часов.
+      summary: Список активных событий ДПС и аварий
+      description: Возвращает события с last_seen_at не старше 2 часов. Фильтрация по городу через параметр city.
+      parameters:
+        - name: city
+          in: query
+          required: false
+          description: Slug города (например blagoveshchensk, khabarovsk)
+          schema:
+            type: string
+            default: blagoveshchensk
       responses:
         "200":
           description: Список событий
@@ -1204,6 +1212,14 @@ paths:
       operationId: getDpsStats
       tags: [dps-radar]
       summary: Статистика — количество активных постов ДПС и аварий
+      parameters:
+        - name: city
+          in: query
+          required: false
+          description: Slug города (например blagoveshchensk, khabarovsk)
+          schema:
+            type: string
+            default: blagoveshchensk
       responses:
         "200":
           description: Статистика
@@ -1935,7 +1951,7 @@ components:
 
     DpsEvent:
       type: object
-      required: [id, type, lat, lng, address, author, lastSeenAt, createdAt, minutesAgo]
+      required: [id, type, lat, lng, address, city, author, lastSeenAt, createdAt, minutesAgo]
       properties:
         id:
           type: integer
@@ -1946,6 +1962,8 @@ components:
         lng:
           type: number
         address:
+          type: string
+        city:
           type: string
         author:
           type: string

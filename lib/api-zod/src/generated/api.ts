@@ -1184,15 +1184,22 @@ export const DeleteOpenaiConversationResponse = zod.void()
 
 
 /**
- * Возвращает события с last_seen_at не старше 2 часов.
- * @summary Список активных событий ДПС и аварий на карте Благовещенска
+ * Возвращает события с last_seen_at не старше 2 часов. Фильтрация по городу через параметр city.
+ * @summary Список активных событий ДПС и аварий
  */
+export const listDpsEventsQueryCityDefault = `blagoveshchensk`;
+
+export const ListDpsEventsQueryParams = zod.object({
+  "city": zod.coerce.string().default(listDpsEventsQueryCityDefault).describe('Slug города (например blagoveshchensk, khabarovsk)')
+})
+
 export const ListDpsEventsResponseItem = zod.object({
   "id": zod.number(),
   "type": zod.enum(['dps_post', 'accident']),
   "lat": zod.number(),
   "lng": zod.number(),
   "address": zod.string(),
+  "city": zod.string(),
   "author": zod.string(),
   "lastSeenAt": zod.coerce.date(),
   "createdAt": zod.coerce.date(),
@@ -1204,6 +1211,12 @@ export const ListDpsEventsResponse = zod.array(ListDpsEventsResponseItem)
 /**
  * @summary Статистика — количество активных постов ДПС и аварий
  */
+export const getDpsStatsQueryCityDefault = `blagoveshchensk`;
+
+export const GetDpsStatsQueryParams = zod.object({
+  "city": zod.coerce.string().default(getDpsStatsQueryCityDefault).describe('Slug города (например blagoveshchensk, khabarovsk)')
+})
+
 export const GetDpsStatsResponse = zod.object({
   "dpsPostCount": zod.number(),
   "accidentCount": zod.number(),

@@ -17,6 +17,20 @@ function escHtml(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
+// City config for centering the map
+const CITY_CONFIG: Record<string, { name: string; lat: number; lng: number }> = {
+  blagoveshchensk: { name: 'Благовещенск', lat: 50.2906, lng: 127.5272 },
+  khabarovsk: { name: 'Хабаровск', lat: 48.4827, lng: 135.0839 },
+};
+const DEFAULT_CITY = 'blagoveshchensk';
+
+/** Читает ?city= из URL или возвращает дефолт */
+function getCityFromUrl(): string {
+  const params = new URLSearchParams(window.location.search);
+  const city = params.get('city') ?? DEFAULT_CITY;
+  return CITY_CONFIG[city] ? city : DEFAULT_CITY;
+}
+
 // ─── Иконки ──────────────────────────────────────────────────────────────────
 const makeCircleIcon = (color: string, size: number, border = '#1e293b') =>
   L.divIcon({
@@ -91,6 +105,9 @@ function saveSettings(s: RadarSettings) { localStorage.setItem(SETTINGS_KEY, JSO
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function MapPage() {
+  const citySlug = React.useMemo(() => getCityFromUrl(), []);
+  const cityConfig = CITY_CONFIG[citySlug] ?? CITY_CONFIG[DEFAULT_CITY];
+
   const mapRef           = React.useRef<L.Map | null>(null);
   const mapContainerRef  = React.useRef<HTMLDivElement>(null);
   const eventsLayerRef   = React.useRef<L.LayerGroup>(new L.LayerGroup());
@@ -138,11 +155,11 @@ export default function MapPage() {
     speed != null && speed > nearestCam.limitKmh;
   const isApproaching = nearestCam != null && nearestCam.distM <= WARN_DIST;
 
-  const { data: fromResults } = useGeocodeSearch(fromQuery);
-  const { data: toResults   } = useGeocodeSearch(toQuery);
+  const { data: fromResults } = useGeocodeSearch(fromQuery, citySlug);
+  const { data: toResults   } = useGeocodeSearch(toQuery,   citySlug);
 
-  const { data: events, refetch: refetchEvents } = useListDpsEvents();
-  const { data: stats,  refetch: refetchStats  } = useGetDpsStats();
+  const { data: events, refetch: refetchEvents } = useListDpsEvents({ city: citySlug });
+  const { data: stats,  refetch: refetchStats  } = useGetDpsStats({ city: citySlug });
 
   React.useEffect(() => {
     const id = setInterval(() => { void refetchEvents(); void refetchStats(); }, 30_000);
@@ -159,7 +176,7 @@ export default function MapPage() {
 
     if (mapContainerRef.current && !mapRef.current) {
       const map = L.map(mapContainerRef.current, {
-        center: [50.2906, 127.5272], zoom: 13, zoomControl: false,
+        center: [cityConfig.lat, cityConfig.lng], zoom: 13, zoomControl: false,
       });
       mapRef.current = map;
 
@@ -189,6 +206,7 @@ export default function MapPage() {
     return () => {
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Синхронизируем ref с state для использования внутри замыкания карты
@@ -443,6 +461,11 @@ export default function MapPage() {
       <div className="relative z-10 w-full p-4 flex flex-col gap-2 pointer-events-none">
         <Card className="pointer-events-auto bg-card/90 backdrop-blur-md border-card-border shadow-xl">
           <CardContent className="p-3 flex flex-col gap-3">
+            {/* Метка города */}
+            <div className="text-xs text-muted-foreground font-medium text-center">
+              📍 {cityConfig.name}
+            </div>
+
             {/* От */}
             <div className="relative">
               <div className="flex items-center bg-input/50 rounded-md border border-border focus-within:border-ring px-3 py-2">

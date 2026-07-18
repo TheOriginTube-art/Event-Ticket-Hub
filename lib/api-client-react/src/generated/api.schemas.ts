@@ -426,6 +426,7 @@ export interface DpsEvent {
   lat: number;
   lng: number;
   address: string;
+  city: string;
   author: string;
   lastSeenAt: string;
   createdAt: string;
@@ -516,6 +517,20 @@ export type FillRandomSeats200 = {
 };
 
 export type GetHomeHighlightsParams = {
+city?: string;
+};
+
+export type ListDpsEventsParams = {
+/**
+ * Slug города (например blagoveshchensk, khabarovsk)
+ */
+city?: string;
+};
+
+export type GetDpsStatsParams = {
+/**
+ * Slug города (например blagoveshchensk, khabarovsk)
+ */
 city?: string;
 };
 

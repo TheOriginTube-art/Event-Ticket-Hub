@@ -35,10 +35,12 @@ import type {
   ExportAdminOrdersParams,
   FillRandomSeats200,
   GetAdminAnalyticsParams,
+  GetDpsStatsParams,
   GetHomeHighlightsParams,
   HealthStatus,
   HomeHighlights,
   ListAdminOrdersParams,
+  ListDpsEventsParams,
   ListEventsParams,
   ListVenuesParams,
   LoginInput,
@@ -3625,21 +3627,28 @@ export const useDeleteOpenaiConversation = <TError = ErrorType<void>,
       return useMutation(getDeleteOpenaiConversationMutationOptions(options));
     }
 
-export const getListDpsEventsUrl = () => {
+export const getListDpsEventsUrl = (params?: ListDpsEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/dps-radar/events`
+  return stringifiedParams.length > 0 ? `/api/dps-radar/events?${stringifiedParams}` : `/api/dps-radar/events`
 }
 
 /**
- * Возвращает события с last_seen_at не старше 2 часов.
- * @summary Список активных событий ДПС и аварий на карте Благовещенска
+ * Возвращает события с last_seen_at не старше 2 часов. Фильтрация по городу через параметр city.
+ * @summary Список активных событий ДПС и аварий
  */
-export const listDpsEvents = async ( options?: RequestInit): Promise<DpsEvent[]> => {
+export const listDpsEvents = async (params?: ListDpsEventsParams, options?: RequestInit): Promise<DpsEvent[]> => {
 
-  return customFetch<DpsEvent[]>(getListDpsEventsUrl(),
+  return customFetch<DpsEvent[]>(getListDpsEventsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -3652,23 +3661,23 @@ export const listDpsEvents = async ( options?: RequestInit): Promise<DpsEvent[]>
 
 
 
-export const getListDpsEventsQueryKey = () => {
+export const getListDpsEventsQueryKey = (params?: ListDpsEventsParams,) => {
     return [
-    `/api/dps-radar/events`
+    `/api/dps-radar/events`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListDpsEventsQueryOptions = <TData = Awaited<ReturnType<typeof listDpsEvents>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDpsEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListDpsEventsQueryOptions = <TData = Awaited<ReturnType<typeof listDpsEvents>>, TError = ErrorType<unknown>>(params?: ListDpsEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDpsEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListDpsEventsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListDpsEventsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDpsEvents>>> = ({ signal }) => listDpsEvents({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDpsEvents>>> = ({ signal }) => listDpsEvents(params, { signal, ...requestOptions });
 
 
 
@@ -3682,15 +3691,15 @@ export type ListDpsEventsQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Список активных событий ДПС и аварий на карте Благовещенска
+ * @summary Список активных событий ДПС и аварий
  */
 
 export function useListDpsEvents<TData = Awaited<ReturnType<typeof listDpsEvents>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDpsEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: ListDpsEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDpsEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListDpsEventsQueryOptions(options)
+  const queryOptions = getListDpsEventsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -3703,20 +3712,27 @@ export function useListDpsEvents<TData = Awaited<ReturnType<typeof listDpsEvents
 
 
 
-export const getGetDpsStatsUrl = () => {
+export const getGetDpsStatsUrl = (params?: GetDpsStatsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/dps-radar/stats`
+  return stringifiedParams.length > 0 ? `/api/dps-radar/stats?${stringifiedParams}` : `/api/dps-radar/stats`
 }
 
 /**
  * @summary Статистика — количество активных постов ДПС и аварий
  */
-export const getDpsStats = async ( options?: RequestInit): Promise<DpsStats> => {
+export const getDpsStats = async (params?: GetDpsStatsParams, options?: RequestInit): Promise<DpsStats> => {
 
-  return customFetch<DpsStats>(getGetDpsStatsUrl(),
+  return customFetch<DpsStats>(getGetDpsStatsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -3729,23 +3745,23 @@ export const getDpsStats = async ( options?: RequestInit): Promise<DpsStats> => 
 
 
 
-export const getGetDpsStatsQueryKey = () => {
+export const getGetDpsStatsQueryKey = (params?: GetDpsStatsParams,) => {
     return [
-    `/api/dps-radar/stats`
+    `/api/dps-radar/stats`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetDpsStatsQueryOptions = <TData = Awaited<ReturnType<typeof getDpsStats>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDpsStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetDpsStatsQueryOptions = <TData = Awaited<ReturnType<typeof getDpsStats>>, TError = ErrorType<unknown>>(params?: GetDpsStatsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDpsStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetDpsStatsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetDpsStatsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDpsStats>>> = ({ signal }) => getDpsStats({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDpsStats>>> = ({ signal }) => getDpsStats(params, { signal, ...requestOptions });
 
 
 
@@ -3763,11 +3779,11 @@ export type GetDpsStatsQueryError = ErrorType<unknown>
  */
 
 export function useGetDpsStats<TData = Awaited<ReturnType<typeof getDpsStats>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDpsStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetDpsStatsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDpsStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetDpsStatsQueryOptions(options)
+  const queryOptions = getGetDpsStatsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

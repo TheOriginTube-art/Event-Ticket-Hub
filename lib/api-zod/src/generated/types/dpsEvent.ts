@@ -13,6 +13,7 @@ export interface DpsEvent {
   lat: number;
   lng: number;
   address: string;
+  city: string;
   author: string;
   lastSeenAt: Date;
   createdAt: Date;

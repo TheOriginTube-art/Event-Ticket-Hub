@@ -8,6 +8,7 @@ export const dpsEventsTable = pgTable("dps_events", {
   lat: real("lat").notNull(),
   lng: real("lng").notNull(),
   address: text("address").notNull(),
+  city: text("city").notNull().default("blagoveshchensk"),
   chatId: bigint("chat_id", { mode: "number" }).notNull(),
   author: text("author").notNull(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
