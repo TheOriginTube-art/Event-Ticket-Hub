@@ -15,7 +15,7 @@ BASE_PATH=/dps-radar/ pnpm --filter @workspace/dps-radar run build
 pnpm --filter @workspace/api-server run build
 
 # ── Миграция БД ───────────────────────────────────────────────────────────────
-pnpm --filter @workspace/db push
+pnpm --filter @workspace/db push-force
 
 # ── pm2 ───────────────────────────────────────────────────────────────────────
 pm2 restart api-server || bash scripts/restart-pm2.sh
