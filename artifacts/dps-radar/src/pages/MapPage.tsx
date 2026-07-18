@@ -200,7 +200,6 @@ export default function MapPage() {
       // Скрываем атрибуцию Leaflet полностью
       map.attributionControl.remove();
 
-      L.control.zoom({ position: 'bottomright' }).addTo(map);
       eventsLayerRef.current.addTo(map);
       osmCameraLayerRef.current.addTo(map);
       customLayerRef.current.addTo(map);
