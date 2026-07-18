@@ -38,7 +38,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-app.use("/api", router);
+// Register API routes at both /api (Replit proxy) and /dps-radar/api
+// (VDS: Express also serves the frontend at /dps-radar/, so fetch calls
+//  from the built app arrive as /dps-radar/api/… instead of /api/…)
+app.use(["/api", "/dps-radar/api"], router);
 
 // ── Статика ДПС Радар (для VDS — один процесс вместо nginx) ──────────────────
 // Если фронтенд собран (`pnpm --filter @workspace/dps-radar run build`),
